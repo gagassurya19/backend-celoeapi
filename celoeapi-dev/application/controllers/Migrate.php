@@ -51,36 +51,15 @@ class Migrate extends CI_Controller {
         echo "\n";
     }
     
-    // ADD THIS METHOD - Version Control
-    public function version($target_version = null)
-    {
-        if ($target_version === null) {
-            $current = $this->migration->current();
-            echo "Current migration version: " . str_pad($current, 3, '0', STR_PAD_LEFT) . "\n";
-            return;
-        }
-        
-        echo "Migrating to version: {$target_version}\n";
-        
-        if ($this->migration->version($target_version) === FALSE) {
-            echo "Migration failed: " . $this->migration->error_string() . "\n";
-            exit(1);
-        } else {
-            $current = $this->migration->current();
-            echo "Migration completed successfully!\n";
-            echo "Current version: " . str_pad($current, 3, '0', STR_PAD_LEFT) . "\n";
-        }
-    }
-    
     public function test()
     {
         echo "=== Migration System Test ===\n\n";
         
         // Test database connection
         echo "Database Configuration:\n";
-        echo "  Host: " . $this->db->hostname . "\n";
-        echo "  Username: " . $this->db->username . "\n";
-        echo "  Database: " . $this->db->database . "\n\n";
+        echo "  Host: " . $this->config->item('migration_db_host') . "\n";
+        echo "  Username: " . $this->config->item('migration_db_username') . "\n";
+        echo "  Database: " . $this->config->item('migration_db_name') . "\n\n";
         
         // Test migration path
         $migrations_path = $this->config->item('migration_path');
@@ -173,7 +152,6 @@ class {$class_name} extends CI_Migration {
         echo "ETL Migration CLI Commands:\n\n";
         echo "  ./migrate.sh run              - Run all pending migrations\n";
         echo "  ./migrate.sh status           - Show current migration status\n";
-        echo "  ./migrate.sh version <ver>    - Migrate to specific version\n";
         echo "  ./migrate.sh create <name>    - Create new migration file\n";
         echo "  ./migrate.sh test             - Test migration system configuration\n";
         echo "  ./migrate.sh help             - Show this help message\n\n";

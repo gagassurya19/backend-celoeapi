@@ -12,7 +12,7 @@ $config['migration_enabled'] = TRUE;
 $config['migration_type'] = 'sequential';
 $config['migration_table'] = 'migration_tracker';
 $config['migration_auto_latest'] = FALSE;
-$config['migration_version'] = 15; // Set to latest migration number
+$config['migration_version'] = 16; // Set to latest migration number
 $config['migration_path'] = APPPATH . 'database/migrations/';
 
 // Environment-specific settings

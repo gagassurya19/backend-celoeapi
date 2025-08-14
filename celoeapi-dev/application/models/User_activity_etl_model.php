@@ -546,7 +546,7 @@ class User_activity_etl_model extends CI_Model {
         return $query->result_array();
     }
 
-     /**
+    /**
      * Insert user activity data into ETL table
      */
     public function insert_user_activity_etl($data, $extraction_date = null)
@@ -557,21 +557,12 @@ class User_activity_etl_model extends CI_Model {
         $this->db->where('extraction_date', $extraction_date);
         $this->db->delete('user_activity_etl');
         
-        $inserted_count = 0;
-        $skipped_count = 0;
-        
         foreach ($data as $row) {
-            // VALIDATION: Skip records with invalid course_id
-            if (empty($row['Course_ID']) || $row['Course_ID'] <= 0) {
-                $skipped_count++;
-                continue;
-            }
-            
             $etl_data = [
-                'course_id' => $row['Course_ID'],
-                'id_number' => $row['ID_Number'] ?: $row['Course_ID'], // Fallback to Course_ID if ID_Number is null
-                'course_name' => $row['Course_Name'] ?: 'Unknown Course',
-                'course_shortname' => $row['Course_Shortname'] ?: 'Unknown',
+                'course_id' => $row['Course_ID'] ?: null,
+                'id_number' => $row['ID_Number'] ?: null,
+                'course_name' => $row['Course_Name'] ?: null,
+                'course_shortname' => $row['Course_Shortname'] ?: null,
                 'num_teachers' => $row['Num_Teachers'] ?: 0,
                 'num_students' => $row['Num_Students'] ?: 0,
                 'file_views' => $row['File_Views'] ?: 0,
@@ -589,14 +580,9 @@ class User_activity_etl_model extends CI_Model {
             ];
             
             $this->db->insert('user_activity_etl', $etl_data);
-            $inserted_count++;
         }
         
-        return [
-            'inserted_count' => $inserted_count,
-            'skipped_count' => $skipped_count,
-            'total_processed' => count($data)
-        ];
+        return true;
     }
 
     /**
@@ -731,8 +717,7 @@ class User_activity_etl_model extends CI_Model {
             if (isset($scheduler_data['id'])) {
                 $this->db->where('id', $scheduler_data['id']);
                 $this->db->update('log_scheduler', [
-                    'status' => 3, // Failed
-                    'error_details' => $e->getMessage()
+                    'status' => 3 // Failed
                 ]);
             }
             
@@ -771,14 +756,11 @@ class User_activity_etl_model extends CI_Model {
         $yesterday = date('Y-m-d', strtotime('-1 day'));
         
         $data = [
-            'batch_name' => 'user_activity',
             'offset' => 0,
             'numrow' => 0,
             'status' => 0, // Not running
-            'limit_size' => 1000,
             'start_date' => $yesterday . ' 00:00:00',
             'end_date' => $yesterday . ' 23:59:59',
-            'error_details' => null,
             'created_at' => date('Y-m-d H:i:s')
         ];
         
@@ -852,8 +834,7 @@ class User_activity_etl_model extends CI_Model {
             $this->db->where('id', $scheduler_id);
             $this->db->update('log_scheduler', [
                 'status' => 1, // Finished (completed)
-                'end_date' => date('Y-m-d H:i:s'),
-                'error_details' => null
+                'end_date' => date('Y-m-d H:i:s')
             ]);
             
             log_message('info', 'Scheduler status updated to finished (1) for date: ' . $extraction_date);
@@ -872,14 +853,11 @@ class User_activity_etl_model extends CI_Model {
         $extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
         
         $data = [
-            'batch_name' => 'user_activity',
             'offset' => 0,
             'numrow' => 0,
             'status' => 2, // Inprogress (running)
-            'limit_size' => 1000,
             'start_date' => date('Y-m-d H:i:s'),
             'end_date' => null,
-            'error_details' => null,
             'created_at' => date('Y-m-d H:i:s')
         ];
         
@@ -910,8 +888,7 @@ class User_activity_etl_model extends CI_Model {
             $this->db->where('id', $scheduler_id);
             $this->db->update('log_scheduler', [
                 'status' => 2, // Inprogress (running)
-                'start_date' => date('Y-m-d H:i:s'),
-                'error_details' => null
+                'start_date' => date('Y-m-d H:i:s')
             ]);
             
             log_message('info', 'Scheduler status updated to inprogress (2) for date: ' . $extraction_date);
@@ -936,8 +913,7 @@ class User_activity_etl_model extends CI_Model {
             $this->db->where('id', $scheduler_id);
             $this->db->update('log_scheduler', [
                 'status' => 3, // Failed
-                'end_date' => date('Y-m-d H:i:s'),
-                'error_details' => $error_message
+                'end_date' => date('Y-m-d H:i:s')
             ]);
             
             log_message('error', 'Scheduler status updated to failed (3) for date: ' . $extraction_date . ' - Error: ' . $error_message);
