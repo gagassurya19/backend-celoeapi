@@ -68,9 +68,9 @@ class Migration_Create_course_activity_summary extends CI_Migration {
         $this->dbforge->add_key('id', TRUE);
         $this->dbforge->add_key('course_id');
         $this->dbforge->add_key('extraction_date');
-        $this->dbforge->add_key(['course_id', 'extraction_date'], FALSE, TRUE); // Unique key
+        $this->dbforge->add_key('course_id_extraction_date', FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('course_activity_summary');
+        $this->dbforge->create_table('course_activity_summary', TRUE);
     }
 
     public function down()

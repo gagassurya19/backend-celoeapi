@@ -103,7 +103,7 @@ class Migration_Create_user_activity_etl extends CI_Migration {
         ));
 
         $this->dbforge->add_key('id', TRUE);
-        $this->dbforge->create_table('user_activity_etl');
+        $this->dbforge->create_table('user_activity_etl', TRUE);
     }
 
     public function down()

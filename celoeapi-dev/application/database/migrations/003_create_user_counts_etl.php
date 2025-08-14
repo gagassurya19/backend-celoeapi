@@ -44,9 +44,8 @@ class Migration_Create_user_counts_etl extends CI_Migration {
         $this->dbforge->add_key('id', TRUE);
         $this->dbforge->add_key('courseid');
         $this->dbforge->add_key('extraction_date');
-        $this->dbforge->add_key(['courseid', 'extraction_date'], FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('user_counts_etl');
+        $this->dbforge->create_table('user_counts_etl', TRUE);
     }
 
     public function down()

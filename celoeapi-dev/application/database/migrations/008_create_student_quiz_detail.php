@@ -108,7 +108,7 @@ class Migration_Create_student_quiz_detail extends CI_Migration {
         $this->dbforge->add_key('extraction_date');
         $this->dbforge->add_key(['user_id', 'quiz_id', 'attempt'], FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('student_quiz_detail');
+        $this->dbforge->create_table('student_quiz_detail', TRUE);
     }
 
     public function down()

@@ -74,7 +74,7 @@ class Migration_Create_raw_log extends CI_Migration {
         $this->dbforge->add_key('module');
         $this->dbforge->add_key('extraction_date');
         
-        $this->dbforge->create_table('raw_log');
+        $this->dbforge->create_table('raw_log', TRUE);
     }
 
     public function down()
