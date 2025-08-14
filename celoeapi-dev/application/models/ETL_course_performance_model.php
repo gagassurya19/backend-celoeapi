@@ -1,5 +1,5 @@
 <?php
-class ETL_Model extends CI_Model
+class ETL_course_performance_model extends CI_Model
 {
     // Batch processing constants
     const BATCH_SIZE = 10000;

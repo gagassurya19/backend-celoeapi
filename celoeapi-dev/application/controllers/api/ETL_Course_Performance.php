@@ -11,7 +11,7 @@
         {
             parent::__construct();
             $this->load->database();
-            $this->load->model('ETL_Model', 'm_ETL');
+            $this->load->model('ETL_course_performance_model', 'm_ETL');
             $this->load->helper('auth');
             $this->load->config('etl');
         }
