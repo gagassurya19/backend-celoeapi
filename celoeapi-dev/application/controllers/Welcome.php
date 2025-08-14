@@ -20,9 +20,11 @@ class Welcome extends CI_Controller {
 	 */
 	public function index()
 	{
+		echo "Checking DB";
        $this->load->database();
        echo "<br>";
-		echo "DB OK";
+		echo "Checking DB OK";
+		echo "Last updated : Mon 16 Aug 2020 20:30";
 		// $this->load->view('welcome_message');
 	}
 }

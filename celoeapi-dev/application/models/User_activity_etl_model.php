@@ -546,7 +546,7 @@ class User_activity_etl_model extends CI_Model {
         return $query->result_array();
     }
 
-     /**
+    /**
      * Insert user activity data into ETL table
      */
     public function insert_user_activity_etl($data, $extraction_date = null)
@@ -557,21 +557,12 @@ class User_activity_etl_model extends CI_Model {
         $this->db->where('extraction_date', $extraction_date);
         $this->db->delete('user_activity_etl');
         
-        $inserted_count = 0;
-        $skipped_count = 0;
-        
         foreach ($data as $row) {
-            // VALIDATION: Skip records with invalid course_id
-            if (empty($row['Course_ID']) || $row['Course_ID'] <= 0) {
-                $skipped_count++;
-                continue;
-            }
-            
             $etl_data = [
-                'course_id' => $row['Course_ID'],
-                'id_number' => $row['ID_Number'] ?: $row['Course_ID'], // Fallback to Course_ID if ID_Number is null
-                'course_name' => $row['Course_Name'] ?: 'Unknown Course',
-                'course_shortname' => $row['Course_Shortname'] ?: 'Unknown',
+                'course_id' => $row['Course_ID'] ?: null,
+                'id_number' => $row['ID_Number'] ?: null,
+                'course_name' => $row['Course_Name'] ?: null,
+                'course_shortname' => $row['Course_Shortname'] ?: null,
                 'num_teachers' => $row['Num_Teachers'] ?: 0,
                 'num_students' => $row['Num_Students'] ?: 0,
                 'file_views' => $row['File_Views'] ?: 0,
@@ -589,14 +580,9 @@ class User_activity_etl_model extends CI_Model {
             ];
             
             $this->db->insert('user_activity_etl', $etl_data);
-            $inserted_count++;
         }
         
-        return [
-            'inserted_count' => $inserted_count,
-            'skipped_count' => $skipped_count,
-            'total_processed' => count($data)
-        ];
+        return true;
     }
 
     /**

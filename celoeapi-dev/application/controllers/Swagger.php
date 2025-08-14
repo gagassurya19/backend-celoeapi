@@ -1,71 +1,70 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-/**
- * Swagger Controller
- * Serves Swagger UI and generates API documentation
- */
 class Swagger extends CI_Controller {
-    
-    public $swagger_generator;
-    
-    public function __construct() {
-        parent::__construct();
-        $this->load->helper('url');
-        $this->load->library('Swagger_Generator');
-        $this->swagger_generator = new Swagger_Generator();
-    }
-    
-    /**
-     * Main Swagger UI page
-     */
-    public function index() {
-        $data['title'] = 'API Documentation';
-        $data['swagger_url'] = base_url('swagger/docs');
-        
-        $this->load->view('swagger/index', $data);
-    }
-    
-    /**
-     * Generate and serve Swagger JSON
-     */
-    public function docs() {
-        header('Content-Type: application/json');
-        
-        // Generate fresh documentation
-        $swagger = $this->swagger_generator->generate_docs();
-        
-        // Save to file for caching
-        $this->swagger_generator->save_to_file();
-        
-        echo json_encode($swagger, JSON_PRETTY_PRINT);
-    }
-    
-    /**
-     * Generate documentation and redirect to Swagger UI
-     */
-    public function generate() {
-        // Generate fresh documentation
-        $this->swagger_generator->generate_docs();
-        
-        // Save to file
-        $this->swagger_generator->save_to_file();
-        
-        // Redirect to Swagger UI
-        redirect('swagger');
-    }
-    
-    /**
-     * Download Swagger JSON file
-     */
-    public function download() {
-        // Generate fresh documentation
-        $swagger = $this->swagger_generator->generate_docs();
-        
-        $filename = 'celoeapi-swagger-' . date('Y-m-d-H-i-s') . '.json';
-        
-        header('Content-Type: application/json');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        echo json_encode($swagger, JSON_PRETTY_PRINT);
-    }
-}
+
+	public function index()
+	{
+		$this->load->helper('url');
+		$this->output->set_content_type('text/html; charset=utf-8');
+		$jsonUrl = site_url('swagger/json');
+		$html = '<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Swagger UI</title>
+	<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+	<style>body{margin:0;} #swagger-ui{margin:0}</style>
+</head>
+<body>
+	<div id="swagger-ui"></div>
+	<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+	<script>
+		window.addEventListener("load", function() {
+			SwaggerUIBundle({
+				url: "' . $jsonUrl . '",
+				dom_id: "#swagger-ui",
+				presets: [SwaggerUIBundle.presets.apis],
+				layout: "BaseLayout"
+			});
+		});
+	</script>
+</body>
+</html>';
+		$this->output->set_output($html);
+	}
+
+	public function json()
+	{
+		$this->output->set_content_type('application/json');
+		$specPath = APPPATH . 'swagger.json';
+		if (is_readable($specPath)) {
+			$spec = file_get_contents($specPath);
+			$this->output->set_output($spec !== false ? $spec : '{}');
+			return;
+		}
+
+		$spec = array(
+			'openapi' => '3.0.1',
+			'info' => array(
+				'title' => 'Celoe API',
+				'version' => '1.0.0'
+			),
+			'servers' => array(
+				array('url' => '/index.php')
+			),
+			'paths' => array(
+				'/api/analytics/health' => array(
+					'get' => array(
+						'summary' => 'Health check',
+						'responses' => array(
+							'200' => array('description' => 'OK')
+						)
+					)
+				)
+			)
+		);
+
+		$this->output->set_output(json_encode($spec));
+	}
+} 
