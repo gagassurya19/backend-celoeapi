@@ -13,7 +13,7 @@ class ETL_Chart_Model extends CI_Model
 {
     private $batch_size;
     private $start_time;
-    private $moodle_logs_db = 'moodle_logs';
+    private $celoeapi_db = 'celoeapi';
 
     public function __construct()
     {
@@ -50,7 +50,7 @@ class ETL_Chart_Model extends CI_Model
         ];
         
         $this->db->query(
-            "INSERT INTO {$this->moodle_logs_db}.etl_chart_logs (start_date, status, total_records, offset) VALUES (?, ?, ?, ?)",
+            "INSERT INTO {$this->celoeapi_db}.etl_chart_logs (start_date, status, total_records, offset) VALUES (?, ?, ?, ?)",
             [$data['start_date'], $data['status'], $data['total_records'], $data['offset']]
         );
         
@@ -64,7 +64,7 @@ class ETL_Chart_Model extends CI_Model
     {
         $end_date = date('Y-m-d H:i:s');
         $start_result = $this->db->query(
-            "SELECT start_date FROM {$this->moodle_logs_db}.etl_chart_logs WHERE id = ?",
+            "SELECT start_date FROM {$this->celoeapi_db}.etl_chart_logs WHERE id = ?",
             [$log_id]
         )->row();
         
@@ -77,7 +77,7 @@ class ETL_Chart_Model extends CI_Model
         }
         
         $this->db->query(
-            "UPDATE {$this->moodle_logs_db}.etl_chart_logs 
+            "UPDATE {$this->celoeapi_db}.etl_chart_logs 
              SET end_date = ?, duration = ?, status = ?, total_records = ? 
              WHERE id = ?",
             [$end_date, $duration, $status, $total_records, $log_id]
@@ -92,7 +92,7 @@ class ETL_Chart_Model extends CI_Model
         // Get logs
         $logs_result = $this->db->query(
             "SELECT id, start_date, end_date, duration, status, total_records, offset, created_at 
-             FROM {$this->moodle_logs_db}.etl_chart_logs 
+             FROM {$this->celoeapi_db}.etl_chart_logs 
              ORDER BY id DESC 
              LIMIT ? OFFSET ?",
             [$limit, $offset]
@@ -100,7 +100,7 @@ class ETL_Chart_Model extends CI_Model
         
         // Get total count
         $count_result = $this->db->query(
-            "SELECT COUNT(*) as total FROM {$this->moodle_logs_db}.etl_chart_logs"
+            "SELECT COUNT(*) as total FROM {$this->celoeapi_db}.etl_chart_logs"
         );
         
         $total = $count_result->row()->total;
@@ -271,14 +271,14 @@ class ETL_Chart_Model extends CI_Model
             foreach ($categories as $category) {
                 // Check if category exists
                 $existing = $this->db->query(
-                    "SELECT category_id FROM {$this->moodle_logs_db}.etl_chart_categories WHERE category_id = ?",
+                    "SELECT category_id FROM {$this->celoeapi_db}.etl_chart_categories WHERE category_id = ?",
                     [$category['category_id']]
                 )->row();
                 
                 if ($existing) {
                     // Update existing
                     $this->db->query(
-                        "UPDATE {$this->moodle_logs_db}.etl_chart_categories 
+                        "UPDATE {$this->celoeapi_db}.etl_chart_categories 
                          SET category_name = ?, category_site = ?, category_type = ?, category_parent_id = ? 
                          WHERE category_id = ?",
                         [
@@ -292,7 +292,7 @@ class ETL_Chart_Model extends CI_Model
                 } else {
                     // Insert new
                     $this->db->query(
-                        "INSERT INTO {$this->moodle_logs_db}.etl_chart_categories 
+                        "INSERT INTO {$this->celoeapi_db}.etl_chart_categories 
                          (category_id, category_name, category_site, category_type, category_parent_id) 
                          VALUES (?, ?, ?, ?, ?)",
                         [
@@ -338,14 +338,14 @@ class ETL_Chart_Model extends CI_Model
             foreach ($subjects as $subject) {
                 // Check if subject exists
                 $existing = $this->db->query(
-                    "SELECT subject_id FROM {$this->moodle_logs_db}.etl_chart_subjects WHERE subject_id = ?",
+                    "SELECT subject_id FROM {$this->celoeapi_db}.etl_chart_subjects WHERE subject_id = ?",
                     [$subject['subject_id']]
                 )->row();
                 
                 if ($existing) {
                     // Update existing
                     $this->db->query(
-                        "UPDATE {$this->moodle_logs_db}.etl_chart_subjects 
+                        "UPDATE {$this->celoeapi_db}.etl_chart_subjects 
                          SET subject_code = ?, subject_name = ?, curriculum_year = ?, category_id = ? 
                          WHERE subject_id = ?",
                         [
@@ -359,7 +359,7 @@ class ETL_Chart_Model extends CI_Model
                 } else {
                     // Insert new
                     $this->db->query(
-                        "INSERT INTO {$this->moodle_logs_db}.etl_chart_subjects 
+                        "INSERT INTO {$this->celoeapi_db}.etl_chart_subjects 
                          (subject_id, subject_code, subject_name, curriculum_year, category_id) 
                          VALUES (?, ?, ?, ?, ?)",
                         [
@@ -529,7 +529,7 @@ class ETL_Chart_Model extends CI_Model
     public function is_etl_running()
     {
         $result = $this->db->query(
-            "SELECT COUNT(*) as count FROM {$this->moodle_logs_db}.etl_chart_logs 
+            "SELECT COUNT(*) as count FROM {$this->celoeapi_db}.etl_chart_logs 
              WHERE status = 'running' 
              AND start_date > DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
         )->row();
@@ -579,7 +579,7 @@ class ETL_Chart_Model extends CI_Model
         $params[] = (int)$offset;
         
         $query = "SELECT id, log_id, timestamp, level, message, progress, created_at 
-                  FROM {$this->moodle_logs_db}.etl_chart_realtime_logs 
+                  FROM {$this->celoeapi_db}.etl_chart_realtime_logs 
                   {$where_clause}
                   ORDER BY timestamp DESC, id DESC
                   LIMIT ? OFFSET ?";
@@ -613,7 +613,7 @@ class ETL_Chart_Model extends CI_Model
             
             // Validate that log_id exists
             $log_exists = $this->db->query(
-                "SELECT id FROM {$this->moodle_logs_db}.etl_chart_logs WHERE id = ?",
+                "SELECT id FROM {$this->celoeapi_db}.etl_chart_logs WHERE id = ?",
                 [$log_id]
             )->row();
             
@@ -634,7 +634,7 @@ class ETL_Chart_Model extends CI_Model
             log_message('debug', "Inserting realtime log: " . json_encode($data));
             
             $result = $this->db->query(
-                "INSERT INTO {$this->moodle_logs_db}.etl_chart_realtime_logs 
+                "INSERT INTO {$this->celoeapi_db}.etl_chart_realtime_logs 
                  (log_id, timestamp, level, message, progress) 
                  VALUES (?, ?, ?, ?, ?)",
                 [$data['log_id'], $data['timestamp'], $data['level'], $data['message'], $data['progress']]
@@ -667,14 +667,14 @@ class ETL_Chart_Model extends CI_Model
             // Check if table exists
             $table_exists = $this->db->query(
                 "SELECT COUNT(*) as count FROM information_schema.tables 
-                 WHERE table_schema = '{$this->moodle_logs_db}' 
+                 WHERE table_schema = '{$this->celoeapi_db}' 
                  AND table_name = 'etl_chart_realtime_logs'"
             )->row();
             
             if ($table_exists->count == 0) {
                 // Create the table
                 $create_sql = "
-                    CREATE TABLE {$this->moodle_logs_db}.etl_chart_realtime_logs (
+                    CREATE TABLE {$this->celoeapi_db}.etl_chart_realtime_logs (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         log_id INT NOT NULL,
                         timestamp DATETIME NOT NULL,
@@ -685,7 +685,7 @@ class ETL_Chart_Model extends CI_Model
                         INDEX idx_log_id (log_id),
                         INDEX idx_timestamp (timestamp),
                         INDEX idx_level (level),
-                        FOREIGN KEY (log_id) REFERENCES {$this->moodle_logs_db}.etl_chart_logs(id) ON DELETE CASCADE
+                        FOREIGN KEY (log_id) REFERENCES {$this->celoeapi_db}.etl_chart_logs(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 ";
                 
@@ -727,7 +727,7 @@ class ETL_Chart_Model extends CI_Model
     {
         // Try to find the latest running or most recent ETL log
         $latest_log = $this->db->query(
-            "SELECT id FROM {$this->moodle_logs_db}.etl_chart_logs 
+            "SELECT id FROM {$this->celoeapi_db}.etl_chart_logs 
              WHERE status = 'running' 
              ORDER BY start_date DESC 
              LIMIT 1"
@@ -736,7 +736,7 @@ class ETL_Chart_Model extends CI_Model
         // If no running ETL, get the most recent one
         if (!$latest_log) {
             $latest_log = $this->db->query(
-                "SELECT id FROM {$this->moodle_logs_db}.etl_chart_logs 
+                "SELECT id FROM {$this->celoeapi_db}.etl_chart_logs 
                  ORDER BY id DESC 
                  LIMIT 1"
             )->row();
@@ -762,7 +762,7 @@ class ETL_Chart_Model extends CI_Model
     {
         $result = $this->db->query(
             "SELECT level, COUNT(*) as count 
-             FROM {$this->moodle_logs_db}.etl_chart_realtime_logs 
+             FROM {$this->celoeapi_db}.etl_chart_realtime_logs 
              WHERE log_id = ?
              GROUP BY level",
             [$log_id]
@@ -786,7 +786,7 @@ class ETL_Chart_Model extends CI_Model
     public function cleanup_old_realtime_logs($days = 30)
     {
         $this->db->query(
-            "DELETE FROM {$this->moodle_logs_db}.etl_chart_realtime_logs 
+            "DELETE FROM {$this->celoeapi_db}.etl_chart_realtime_logs 
              WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)",
             [$days]
         );
@@ -849,7 +849,7 @@ class ETL_Chart_Model extends CI_Model
                 
                 // Single bulk upsert query
                 $bulk_query = "
-                    INSERT INTO {$this->moodle_logs_db}.etl_chart_categories 
+                    INSERT INTO {$this->celoeapi_db}.etl_chart_categories 
                     (category_id, category_name, category_site, category_type, category_parent_id) 
                     VALUES {$values_string}
                     ON DUPLICATE KEY UPDATE 
@@ -980,7 +980,7 @@ class ETL_Chart_Model extends CI_Model
                 
                 // Single bulk upsert query - much faster than individual INSERTs/UPDATEs
                 $bulk_query = "
-                    INSERT INTO {$this->moodle_logs_db}.etl_chart_subjects 
+                    INSERT INTO {$this->celoeapi_db}.etl_chart_subjects 
                     (subject_id, subject_code, subject_name, curriculum_year, category_id) 
                     VALUES {$values_string}
                     ON DUPLICATE KEY UPDATE 
@@ -1097,7 +1097,7 @@ class ETL_Chart_Model extends CI_Model
                 $values_string = implode(', ', $values_array);
                 
                 $bulk_query = "
-                    INSERT INTO {$this->moodle_logs_db}.etl_chart_subjects 
+                    INSERT INTO {$this->celoeapi_db}.etl_chart_subjects 
                     (subject_id, subject_code, subject_name, curriculum_year, category_id) 
                     VALUES {$values_string}
                     ON DUPLICATE KEY UPDATE 
@@ -1163,7 +1163,7 @@ class ETL_Chart_Model extends CI_Model
             $stuck_query = "
                 SELECT id, start_date, 
                        TIMESTAMPDIFF(MINUTE, start_date, NOW()) as minutes_running 
-                FROM {$this->moodle_logs_db}.etl_chart_logs 
+                FROM {$this->celoeapi_db}.etl_chart_logs 
                 WHERE status = 'running' 
                 AND start_date < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
             ";
@@ -1181,7 +1181,7 @@ class ETL_Chart_Model extends CI_Model
             foreach ($stuck_processes as $process) {
                 // Mark as failed and set end date
                 $this->db->query(
-                    "UPDATE {$this->moodle_logs_db}.etl_chart_logs 
+                    "UPDATE {$this->celoeapi_db}.etl_chart_logs 
                      SET status = 'failed', end_date = NOW(), duration = TIMEDIFF(NOW(), start_date) 
                      WHERE id = ?",
                     array($process->id)
@@ -1201,7 +1201,7 @@ class ETL_Chart_Model extends CI_Model
             
             // Also clear any processes that have been running for more than 30 minutes without proper handling
             $hanging_query = "
-                SELECT id FROM {$this->moodle_logs_db}.etl_chart_logs 
+                SELECT id FROM {$this->celoeapi_db}.etl_chart_logs 
                 WHERE status = 'running' 
                 AND (end_date IS NULL OR end_date = '0000-00-00 00:00:00')
                 AND start_date < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
@@ -1211,7 +1211,7 @@ class ETL_Chart_Model extends CI_Model
             
             foreach ($hanging_processes as $process) {
                 $this->db->query(
-                    "UPDATE {$this->moodle_logs_db}.etl_chart_logs 
+                    "UPDATE {$this->celoeapi_db}.etl_chart_logs 
                      SET status = 'failed', end_date = NOW(), duration = TIMEDIFF(NOW(), start_date) 
                      WHERE id = ?",
                     array($process->id)

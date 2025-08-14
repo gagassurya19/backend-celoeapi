@@ -257,10 +257,10 @@
                 }
 
                 // Get all ETL processes from database
-                $all_processes = $this->db->query("SELECT * FROM moodle_logs.log_scheduler ORDER BY id DESC LIMIT 10")->result();
+                $all_processes = $this->db->query("SELECT * FROM celoeapi.log_scheduler ORDER BY id DESC LIMIT 10")->result();
                 
                 // Get running processes
-                $running_processes = $this->db->query("SELECT * FROM moodle_logs.log_scheduler WHERE status = 2")->result();
+                $running_processes = $this->db->query("SELECT * FROM celoeapi.log_scheduler WHERE status = 2")->result();
                 
                 $this->response([
                     'status' => true,
@@ -398,7 +398,7 @@
                 $stuck_query = "
                     SELECT id, start_date, 
                            TIMESTAMPDIFF(MINUTE, start_date, NOW()) as minutes_running 
-                    FROM moodle_logs.log_scheduler 
+                    FROM celoeapi.log_scheduler 
                     WHERE status = 2 
                     AND start_date < DATE_SUB(NOW(), INTERVAL 2 HOUR)
                 ";
@@ -416,7 +416,7 @@
                 foreach ($stuck_processes as $process) {
                     // Mark as failed
                     $this->db->query(
-                        "UPDATE moodle_logs.log_scheduler SET status = 3, end_date = NOW() WHERE id = ?",
+                        "UPDATE celoeapi.log_scheduler SET status = 3, end_date = NOW() WHERE id = ?",
                         array($process->id)
                     );
                     
@@ -426,7 +426,7 @@
                 
                 // Also clear any processes that have been running for more than 10 minutes without proper start
                 $hanging_query = "
-                    SELECT id FROM moodle_logs.log_scheduler 
+                    SELECT id FROM celoeapi.log_scheduler 
                     WHERE status = 2 
                     AND (end_date IS NULL OR end_date = '0000-00-00 00:00:00')
                     AND start_date < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
@@ -436,7 +436,7 @@
                 
                 foreach ($hanging_processes as $process) {
                     $this->db->query(
-                        "UPDATE moodle_logs.log_scheduler SET status = 3, end_date = NOW() WHERE id = ?",
+                        "UPDATE celoeapi.log_scheduler SET status = 3, end_date = NOW() WHERE id = ?",
                         array($process->id)
                     );
                     
@@ -461,7 +461,7 @@
         {
             try {
                 // Get all inprogress ETL processes
-                $inprogress_query = "SELECT id, start_date FROM moodle_logs.log_scheduler WHERE status = 2";
+                $inprogress_query = "SELECT id, start_date FROM celoeapi.log_scheduler WHERE status = 2";
                 $inprogress_processes = $this->db->query($inprogress_query)->result();
                 
                 if (empty($inprogress_processes)) {
@@ -479,7 +479,7 @@
                 foreach ($inprogress_processes as $process) {
                     // Mark as failed (status 3)
                     $this->db->query(
-                        "UPDATE moodle_logs.log_scheduler SET status = 3, end_date = NOW() WHERE id = ?",
+                        "UPDATE celoeapi.log_scheduler SET status = 3, end_date = NOW() WHERE id = ?",
                         array($process->id)
                     );
                     

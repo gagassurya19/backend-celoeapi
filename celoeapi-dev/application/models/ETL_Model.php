@@ -231,7 +231,7 @@ class ETL_Model extends CI_Model
             $this->db->trans_start();
             
             foreach ($tables as $table) {
-                $this->db->query("TRUNCATE TABLE moodle_logs.{$table}");
+                $this->db->query("TRUNCATE TABLE celoeapi.{$table}");
             }
             
             $this->db->trans_complete();
@@ -266,7 +266,7 @@ class ETL_Model extends CI_Model
                 $this->check_memory_usage();
                 
                 $query = "
-                    INSERT INTO moodle_logs.raw_log
+                    INSERT INTO celoeapi.raw_log
                     SELECT 
                         id, eventname, component, action, target, objecttable, objectid,
                         crud, edulevel, contextid, contextlevel, contextinstanceid,
@@ -334,7 +334,7 @@ class ETL_Model extends CI_Model
                 $this->check_memory_usage();
                 
                 $query = "
-                    INSERT INTO moodle_logs.course_activity_summary (
+                    INSERT INTO celoeapi.course_activity_summary (
                         course_id, section, activity_id, activity_type, activity_name,
                         accessed_count, submission_count, graded_count, attempted_count
                     )
@@ -418,7 +418,7 @@ class ETL_Model extends CI_Model
                 
                 // Use JOIN with derived table to avoid MySQL 5.7 LIMIT in subquery limitation
                 $query = "
-                    INSERT INTO moodle_logs.student_profile (
+                    INSERT INTO celoeapi.student_profile (
                         user_id, idnumber, full_name, email, program_studi
                     )
                     SELECT 
@@ -499,9 +499,9 @@ class ETL_Model extends CI_Model
             ['name' => 'idx_mdl_user_role', 'table' => "{$this->moodle_db}.mdl_role_assignments", 'sql' => "CREATE INDEX idx_mdl_user_role ON {$this->moodle_db}.mdl_role_assignments(roleid, userid)"],
             
             // ETL table optimizations
-            ['name' => 'idx_raw_log_composite', 'table' => 'moodle_logs.raw_log', 'sql' => "CREATE INDEX idx_raw_log_composite ON moodle_logs.raw_log(courseid, userid, timecreated)"],
-            ['name' => 'idx_course_activity_composite', 'table' => 'moodle_logs.course_activity_summary', 'sql' => "CREATE INDEX idx_course_activity_composite ON moodle_logs.course_activity_summary(course_id, activity_type)"],
-            ['name' => 'idx_student_profile_composite', 'table' => 'moodle_logs.student_profile', 'sql' => "CREATE INDEX idx_student_profile_composite ON moodle_logs.student_profile(user_id, idnumber)"],
+            ['name' => 'idx_raw_log_composite', 'table' => 'celoeapi.raw_log', 'sql' => "CREATE INDEX idx_raw_log_composite ON celoeapi.raw_log(courseid, userid, timecreated)"],
+            ['name' => 'idx_course_activity_composite', 'table' => 'celoeapi.course_activity_summary', 'sql' => "CREATE INDEX idx_course_activity_composite ON celoeapi.course_activity_summary(course_id, activity_type)"],
+            ['name' => 'idx_student_profile_composite', 'table' => 'celoeapi.student_profile', 'sql' => "CREATE INDEX idx_student_profile_composite ON celoeapi.student_profile(user_id, idnumber)"],
         ];
         
         foreach ($indexes as $index) {
@@ -577,13 +577,13 @@ class ETL_Model extends CI_Model
     private function analyze_etl_tables()
     {
         $tables = [
-            'moodle_logs.raw_log',
-            'moodle_logs.course_activity_summary',
-            'moodle_logs.student_profile',
-            'moodle_logs.student_quiz_detail',
-            'moodle_logs.student_assignment_detail',
-            'moodle_logs.student_resource_access',
-            'moodle_logs.course_summary'
+            'celoeapi.raw_log',
+            'celoeapi.course_activity_summary',
+            'celoeapi.student_profile',
+            'celoeapi.student_quiz_detail',
+            'celoeapi.student_assignment_detail',
+            'celoeapi.student_resource_access',
+            'celoeapi.course_summary'
         ];
         
         foreach ($tables as $table) {
@@ -598,7 +598,7 @@ class ETL_Model extends CI_Model
     {
         $progress = round(($processed / $total) * 100, 2);
         $this->db->query(
-            "UPDATE moodle_logs.log_scheduler SET offset = ?, numrow = ? WHERE id = ?",
+            "UPDATE celoeapi.log_scheduler SET offset = ?, numrow = ? WHERE id = ?",
             array($processed, $total, $log_id)
         );
     }
@@ -610,7 +610,7 @@ class ETL_Model extends CI_Model
     {
         $query = $this->db->query("
             SELECT end_date 
-            FROM moodle_logs.log_scheduler 
+            FROM celoeapi.log_scheduler 
             WHERE status = 1 
             ORDER BY id DESC 
             LIMIT 1
@@ -660,7 +660,7 @@ class ETL_Model extends CI_Model
     private function etl_raw_log_incremental($last_run_time)
     {
         $query = "
-            INSERT INTO moodle_logs.raw_log
+            INSERT INTO celoeapi.raw_log
             SELECT 
                 id, eventname, component, action, target, objecttable, objectid,
                 crud, edulevel, contextid, contextlevel, contextinstanceid,
@@ -743,7 +743,7 @@ class ETL_Model extends CI_Model
             log_message('info', 'Running ETL 4: student_quiz_detail');
 
             $query = "
-                    INSERT INTO moodle_logs.student_quiz_detail (
+                    INSERT INTO celoeapi.student_quiz_detail (
                         quiz_id, user_id, nim, full_name, waktu_mulai, waktu_selesai,
                         durasi_waktu, jumlah_soal, jumlah_dikerjakan, nilai
                     )
@@ -780,7 +780,7 @@ class ETL_Model extends CI_Model
             log_message('info', 'Running ETL 5: student_assignment_detail');
 
             $query = "
-                    INSERT INTO moodle_logs.student_assignment_detail (
+                    INSERT INTO celoeapi.student_assignment_detail (
                         assignment_id, user_id, nim, full_name, waktu_submit, waktu_pengerjaan, nilai
                     )
                     SELECT 
@@ -819,7 +819,7 @@ class ETL_Model extends CI_Model
             log_message('info', 'Running ETL 6: student_resource_access');
 
             $query = "
-                    INSERT INTO moodle_logs.student_resource_access (
+                    INSERT INTO celoeapi.student_resource_access (
                         resource_id, user_id, nim, full_name, waktu_akses
                     )
                     SELECT 
@@ -851,7 +851,7 @@ class ETL_Model extends CI_Model
             log_message('info', 'Running ETL 7: course_summary');
 
             $query = "
-                    INSERT INTO moodle_logs.course_summary (
+                    INSERT INTO celoeapi.course_summary (
                         course_id, course_name, kelas, jumlah_aktivitas, jumlah_mahasiswa, dosen_pengampu
                     )
                     SELECT 
@@ -889,11 +889,11 @@ class ETL_Model extends CI_Model
     {
         try {
             // Get latest ETL run from log_scheduler table
-            $query = $this->db->query("SELECT * FROM moodle_logs.log_scheduler ORDER BY id DESC LIMIT 1");
+            $query = $this->db->query("SELECT * FROM celoeapi.log_scheduler ORDER BY id DESC LIMIT 1");
             $last_run = $query->row();
 
             // Check if there's an ETL in progress
-            $running_query = $this->db->query("SELECT COUNT(*) as running_count FROM moodle_logs.log_scheduler WHERE status = 2");
+            $running_query = $this->db->query("SELECT COUNT(*) as running_count FROM celoeapi.log_scheduler WHERE status = 2");
             $is_running = $running_query->row()->running_count > 0;
 
             return [
@@ -920,11 +920,11 @@ class ETL_Model extends CI_Model
     {
         try {
             // Get total count
-            $count_query = $this->db->query("SELECT COUNT(*) as total FROM moodle_logs.log_scheduler");
+            $count_query = $this->db->query("SELECT COUNT(*) as total FROM celoeapi.log_scheduler");
             $total = $count_query->row()->total;
 
             // Get logs with pagination
-            $query = $this->db->query("SELECT * FROM moodle_logs.log_scheduler ORDER BY id DESC LIMIT ? OFFSET ?", array($limit, $offset));
+            $query = $this->db->query("SELECT * FROM celoeapi.log_scheduler ORDER BY id DESC LIMIT ? OFFSET ?", array($limit, $offset));
             $logs = $query->result();
 
             // Format logs
@@ -978,7 +978,7 @@ class ETL_Model extends CI_Model
             ];
 
             $this->db->query(
-                "INSERT INTO moodle_logs.log_scheduler (offset, numrow, status, start_date, end_date) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO celoeapi.log_scheduler (offset, numrow, status, start_date, end_date) VALUES (?, ?, ?, ?, ?)",
                 array($data['offset'], $data['numrow'], $data['status'], $data['start_date'], $data['end_date'])
             );
             $log_id = $this->db->insert_id();
@@ -997,7 +997,7 @@ class ETL_Model extends CI_Model
         try {
             $end_date = date('Y-m-d H:i:s');
             $this->db->query(
-                "UPDATE moodle_logs.log_scheduler SET numrow = ?, status = ?, end_date = ? WHERE id = ?",
+                "UPDATE celoeapi.log_scheduler SET numrow = ?, status = ?, end_date = ? WHERE id = ?",
                 array($total_records, 1, $end_date, $log_id)
             );
 
@@ -1014,7 +1014,7 @@ class ETL_Model extends CI_Model
         try {
             $end_date = date('Y-m-d H:i:s');
             $this->db->query(
-                "UPDATE moodle_logs.log_scheduler SET status = ?, end_date = ? WHERE id = ?",
+                "UPDATE celoeapi.log_scheduler SET status = ?, end_date = ? WHERE id = ?",
                 array(3, $end_date, $log_id)
             );
 

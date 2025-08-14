@@ -29,13 +29,13 @@ class Course_Analytics_Model extends CI_Model {
             $params[] = '%' . $filters['dosen_pengampu'] . '%';
         }
 
-        // Base query - mengakses moodle_logs database langsung
+        // Base query - mengakses celoeapi database langsung
         $base_query = "SELECT DISTINCT cs.course_id, cs.course_name, cs.kelas, 
                        cs.jumlah_aktivitas, cs.jumlah_mahasiswa, cs.dosen_pengampu 
-                       FROM moodle_logs.course_summary cs";
+                       FROM celoeapi.course_summary cs";
 
         if (!empty($filters['activity_type'])) {
-            $base_query .= " JOIN moodle_logs.course_activity_summary cas ON cas.course_id = cs.course_id";
+            $base_query .= " JOIN celoeapi.course_activity_summary cas ON cas.course_id = cs.course_id";
             $where_conditions[] = "cas.activity_type = ?";
             $params[] = $filters['activity_type'];
         }
@@ -46,9 +46,9 @@ class Course_Analytics_Model extends CI_Model {
         }
 
         // Count total records
-        $count_query = "SELECT COUNT(DISTINCT cs.course_id) as total FROM moodle_logs.course_summary cs";
+        $count_query = "SELECT COUNT(DISTINCT cs.course_id) as total FROM celoeapi.course_summary cs";
         if (!empty($filters['activity_type'])) {
-            $count_query .= " JOIN moodle_logs.course_activity_summary cas ON cas.course_id = cs.course_id";
+            $count_query .= " JOIN celoeapi.course_activity_summary cas ON cas.course_id = cs.course_id";
         }
         if (!empty($where_conditions)) {
             $count_query .= " WHERE " . implode(" AND ", $where_conditions);
@@ -94,7 +94,7 @@ class Course_Analytics_Model extends CI_Model {
     public function get_course_activities($course_id, $filters = [], $pagination = [])
     {
         // Get course info first
-        $course_query = "SELECT course_id, course_name, kelas FROM moodle_logs.course_summary WHERE course_id = ?";
+        $course_query = "SELECT course_id, course_name, kelas FROM celoeapi.course_summary WHERE course_id = ?";
         $course_result = $this->db->query($course_query, [$course_id]);
         $course_info = $course_result->row();
 
@@ -122,7 +122,7 @@ class Course_Analytics_Model extends CI_Model {
         }
 
         // Count total records
-        $count_query = "SELECT COUNT(*) as total FROM moodle_logs.course_activity_summary cas WHERE " . implode(" AND ", $where_conditions);
+        $count_query = "SELECT COUNT(*) as total FROM celoeapi.course_activity_summary cas WHERE " . implode(" AND ", $where_conditions);
         $count_result = $this->db->query($count_query, $params);
         $total_count = $count_result->row()->total;
 
@@ -131,7 +131,7 @@ class Course_Analytics_Model extends CI_Model {
                             cas.activity_type, cas.activity_name, cas.accessed_count, 
                             cas.submission_count, cas.graded_count, cas.attempted_count, 
                             cas.created_at 
-                            FROM moodle_logs.course_activity_summary cas 
+                            FROM celoeapi.course_activity_summary cas 
                             WHERE " . implode(" AND ", $where_conditions) . "
                             ORDER BY cas.section ASC, cas.activity_name ASC 
                             LIMIT ? OFFSET ?";
@@ -203,8 +203,8 @@ class Course_Analytics_Model extends CI_Model {
         }
 
         // Count total records
-        $count_query = "SELECT COUNT(*) as total FROM moodle_logs.student_quiz_detail sqd 
-                       LEFT JOIN moodle_logs.student_profile sp ON sp.user_id = sqd.user_id 
+        $count_query = "SELECT COUNT(*) as total FROM celoeapi.student_quiz_detail sqd 
+                       LEFT JOIN celoeapi.student_profile sp ON sp.user_id = sqd.user_id 
                        WHERE " . implode(" AND ", $where_conditions);
         $count_result = $this->db->query($count_query, $params);
         $total_count = $count_result->row()->total;
@@ -225,8 +225,8 @@ class Course_Analytics_Model extends CI_Model {
         $main_query = "SELECT sqd.id, sqd.user_id, sqd.nim, sqd.full_name, sp.program_studi,
                       sqd.waktu_mulai, sqd.waktu_selesai, sqd.durasi_waktu as durasi_pengerjaan, sqd.jumlah_soal,
                       sqd.jumlah_dikerjakan, sqd.nilai, sqd.waktu_mulai as waktu_aktivitas
-                      FROM moodle_logs.student_quiz_detail sqd 
-                      LEFT JOIN moodle_logs.student_profile sp ON sp.user_id = sqd.user_id 
+                      FROM celoeapi.student_quiz_detail sqd 
+                      LEFT JOIN celoeapi.student_profile sp ON sp.user_id = sqd.user_id 
                       WHERE " . implode(" AND ", $where_conditions) . "
                       ORDER BY sqd." . $sort_by . " " . strtoupper($sort_order) . "
                       LIMIT ? OFFSET ?";
@@ -270,8 +270,8 @@ class Course_Analytics_Model extends CI_Model {
         }
 
         // Count total records
-        $count_query = "SELECT COUNT(*) as total FROM moodle_logs.student_assignment_detail sad 
-                       LEFT JOIN moodle_logs.student_profile sp ON sp.user_id = sad.user_id 
+        $count_query = "SELECT COUNT(*) as total FROM celoeapi.student_assignment_detail sad 
+                       LEFT JOIN celoeapi.student_profile sp ON sp.user_id = sad.user_id 
                        WHERE " . implode(" AND ", $where_conditions);
         $count_result = $this->db->query($count_query, $params);
         $total_count = $count_result->row()->total;
@@ -286,8 +286,8 @@ class Course_Analytics_Model extends CI_Model {
         $main_query = "SELECT sad.id, sad.user_id, sad.nim, sad.full_name, sp.program_studi,
                       sad.waktu_submit, sad.waktu_pengerjaan as durasi_pengerjaan, sad.nilai, 
                       sad.waktu_submit as waktu_aktivitas
-                      FROM moodle_logs.student_assignment_detail sad 
-                      LEFT JOIN moodle_logs.student_profile sp ON sp.user_id = sad.user_id 
+                      FROM celoeapi.student_assignment_detail sad 
+                      LEFT JOIN celoeapi.student_profile sp ON sp.user_id = sad.user_id 
                       WHERE " . implode(" AND ", $where_conditions) . "
                       ORDER BY sad." . $sort_by . " " . strtoupper($sort_order) . "
                       LIMIT ? OFFSET ?";
@@ -331,8 +331,8 @@ class Course_Analytics_Model extends CI_Model {
         }
 
         // Count total records
-        $count_query = "SELECT COUNT(*) as total FROM moodle_logs.student_resource_access sra 
-                       LEFT JOIN moodle_logs.student_profile sp ON sp.user_id = sra.user_id 
+        $count_query = "SELECT COUNT(*) as total FROM celoeapi.student_resource_access sra 
+                       LEFT JOIN celoeapi.student_profile sp ON sp.user_id = sra.user_id 
                        WHERE " . implode(" AND ", $where_conditions);
         $count_result = $this->db->query($count_query, $params);
         $total_count = $count_result->row()->total;
@@ -349,8 +349,8 @@ class Course_Analytics_Model extends CI_Model {
 
         $main_query = "SELECT sra.id, sra.user_id, sra.nim, sra.full_name, sp.program_studi,
                       sra.waktu_akses, sra.waktu_akses as waktu_aktivitas
-                      FROM moodle_logs.student_resource_access sra 
-                      LEFT JOIN moodle_logs.student_profile sp ON sp.user_id = sra.user_id 
+                      FROM celoeapi.student_resource_access sra 
+                      LEFT JOIN celoeapi.student_profile sp ON sp.user_id = sra.user_id 
                       WHERE " . implode(" AND ", $where_conditions) . "
                       ORDER BY sra." . $sort_by . " " . strtoupper($sort_order) . "
                       LIMIT ? OFFSET ?";
@@ -383,7 +383,7 @@ class Course_Analytics_Model extends CI_Model {
         $stats_query = "SELECT COUNT(*) as total_participants,
                               AVG(nilai) as average_score,
                               COUNT(CASE WHEN nilai IS NOT NULL THEN 1 END) as completed_count
-                       FROM moodle_logs.student_quiz_detail 
+                       FROM celoeapi.student_quiz_detail 
                        WHERE quiz_id = ?";
         
         $stats_result = $this->db->query($stats_query, [$quiz_id]);
@@ -408,7 +408,7 @@ class Course_Analytics_Model extends CI_Model {
         $stats_query = "SELECT COUNT(*) as total_participants,
                               AVG(nilai) as average_score,
                               COUNT(CASE WHEN nilai IS NOT NULL THEN 1 END) as completed_count
-                       FROM moodle_logs.student_assignment_detail 
+                       FROM celoeapi.student_assignment_detail 
                        WHERE assignment_id = ?";
         
         $stats_result = $this->db->query($stats_query, [$assignment_id]);
@@ -431,7 +431,7 @@ class Course_Analytics_Model extends CI_Model {
     private function _calculate_resource_statistics($resource_id)
     {
         $stats_query = "SELECT COUNT(DISTINCT user_id) as total_participants 
-                       FROM moodle_logs.student_resource_access 
+                       FROM celoeapi.student_resource_access 
                        WHERE resource_id = ?";
         
         $stats_result = $this->db->query($stats_query, [$resource_id]);

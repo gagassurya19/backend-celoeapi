@@ -33,7 +33,7 @@ $config['etl_chart_timeout'] = 600;                  // ETL operation timeout in
 $config['etl_chart_log_level'] = 'info';             // Log level for ETL operations
 
 // Database settings specific to ETL Chart
-$config['etl_chart_target_database'] = 'moodle_logs';  // Target database name
+$config['etl_chart_target_database'] = 'celoeapi';  // Target database name
 $config['etl_chart_target_tables'] = [
     'etl_chart_categories',
     'etl_chart_subjects'

@@ -23,7 +23,7 @@ $config['etl_timeout'] = 300;                  // ETL operation timeout in secon
 $config['etl_log_level'] = 'info';             // Log level for ETL operations
 
 // Database settings specific to ETL
-$config['etl_source_database'] = 'moodle_logs';  // Source database name
+$config['etl_source_database'] = 'celoeapi';  // Source database name
 $config['etl_target_tables'] = [
     'raw_log',
     'course_activity_summary', 
