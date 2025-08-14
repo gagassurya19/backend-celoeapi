@@ -1,0 +1,6 @@
+[submodule "celoeapi-dev"]
+	path = celoeapi-dev
+	url = git@github.com:gagassurya19/celoeapi-dev.git
+[submodule "moodle"]
+	path = moodle
+	url = git://git.moodle.org/moodle.git

@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8080:80"
+    volumes:
+      - ./moodle:/var/www/html
+      - ./moodledata:/var/www/moodledata
+      - ./init-moodle.sh:/var/www/html/init-moodle.sh
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moodle
+    restart: unless-stopped
+
+  celoeapi:
+    build: ./celoeapi-dev
+    ports:
+      - "8081:80"
+    volumes:
+      - ./celoeapi-dev:/var/www/html
+      - ./setup-celoeapi.sh:/var/www/html/setup-celoeapi.sh
+      - ./celoeapi-dev/etl_database_schema.sql:/var/www/html/etl_database_schema.sql
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - moodle
+    restart: unless-stopped
+
+  db:
+    image: mysql:5.7
+    platform: linux/amd64
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: moodle
+      MYSQL_USER: moodleuser
+      MYSQL_PASSWORD: moodlepass
+    ports:
+      - "3302:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./mysql/init-user.sql:/docker-entrypoint-initdb.d/init-user.sql
+    networks:
+      - moodle
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "moodleuser", "-pmoodlepass"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+      start_period: 30s
+
+volumes:
+  db_data:
+
+networks:
+  moodle:
+    driver: bridge
+  

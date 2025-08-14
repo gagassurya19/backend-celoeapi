@@ -1,0 +1,58 @@
+# OS/Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.*
+!.env.example
+**/.env
+
+# Node (if any frontend present)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# PHP/Composer
+vendor/
+composer.phar
+
+# Moodle core sensitive and generated files
+moodle/config.php
+moodle/vendor/
+
+# Moodle data (runtime, large, not for VCS)
+moodledata/
+
+# Moodle runtime/cache dirs (sometimes present inside webroot)
+moodle/cache/
+moodle/localcache/
+moodle/muc/
+moodle/sessions/
+moodle/temp/
+moodle/trashdir/
+
+# Docker artifacts (optional local overrides)
+docker-compose.override.local.yml
+
+# Project-specific (CodeIgniter-style app under celoeapi-dev)
+celoeapi-dev/.env
+celoeapi-dev/application/logs/
+celoeapi-dev/application/cache/
+# keep placeholder index.html files if any
+!celoeapi-dev/application/cache/index.html
+
+# Misc
+*.swp
+*.swo
+*.bak
+*.tmp 

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  celoeapi:
+    build:
+      context: ./celoeapi-dev
+    container_name: celoe-api
+    restart: always
+    ports:
+      - "8081:80"
+    volumes:
+      - ./celoeapi-dev:/var/www/html
+    depends_on:
+      - db
+    networks:
+      - moodle
+
+networks:
+  moodle:
+    driver: bridge 
+
