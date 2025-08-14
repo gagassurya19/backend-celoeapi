@@ -55,10 +55,6 @@ class Migration_Create_etl_status extends CI_Migration {
                 'type' => 'TEXT',
                 'null' => TRUE
             ],
-            'error_details' => [
-                'type' => 'TEXT',
-                'null' => TRUE
-            ],
             'extraction_date' => [
                 'type' => 'DATE',
                 'null' => TRUE
@@ -85,7 +81,7 @@ class Migration_Create_etl_status extends CI_Migration {
         $this->dbforge->add_key('extraction_date');
         $this->dbforge->add_key(['process_name', 'extraction_date'], FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('etl_status');
+        $this->dbforge->create_table('etl_status', TRUE);
     }
 
     public function down()

@@ -83,7 +83,7 @@ class Migration_Create_student_resource_access extends CI_Migration {
         $this->dbforge->add_key('extraction_date');
         $this->dbforge->add_key(['user_id', 'resource_id', 'access_time'], FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('student_resource_access');
+        $this->dbforge->create_table('student_resource_access', TRUE);
     }
 
     public function down()
