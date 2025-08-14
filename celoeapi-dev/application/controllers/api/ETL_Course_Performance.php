@@ -5,21 +5,22 @@
     require APPPATH . 'libraries/REST_Controller.php';
     require APPPATH . 'libraries/Format.php';
 
-    class ETL extends REST_Controller {
+    class ETL_Course_Performance extends REST_Controller {
 
-            function __construct()
-    {
-        parent::__construct();
-        $this->load->database();
-        $this->load->model('ETL_Model', 'm_ETL');
-        $this->load->config('etl');
-    }
+        function __construct()
+        {
+            parent::__construct();
+            $this->load->database();
+            $this->load->model('ETL_Model', 'm_ETL');
+            $this->load->helper('auth');
+            $this->load->config('etl');
+        }
 
         // POST /api/etl/run - Manually trigger ETL process
         public function run_post() 
         {      
             try {
-                // Basic authentication check
+                // Basic authentication check (you can enhance this based on your webhook auth needs)
                 $auth_header = $this->input->get_request_header('Authorization', TRUE);
                 if (!$this->_validate_webhook_token($auth_header)) {
                     $this->response([
@@ -502,19 +503,6 @@
             } catch (Exception $e) {
                 log_message('error', 'Failed to force clear all inprogress ETL processes: ' . $e->getMessage());
                 throw $e;
-                    }
-    }
-
-    // Private helper methods
-    private function _validate_webhook_token($auth_header)
-    {
-        if (!$auth_header) {
-            return false;
+            }
         }
-
-        $expected_token = $this->config->item('webhook_token') ?: 'default-webhook-token-change-this';
-        $provided_token = str_replace('Bearer ', '', $auth_header);
-        
-        return $provided_token === $expected_token;
     }
-}

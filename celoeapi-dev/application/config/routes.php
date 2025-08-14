@@ -58,6 +58,11 @@ $route['api/user_activity_etl/run_pipeline']['POST'] = 'api/user_activity_etl/ru
 $route['api/user_activity_etl/export']['GET'] = 'api/user_activity_etl/export';
 $route['api/user_activity_etl/clean_data']['POST'] = 'api/user_activity_etl/clean_data';
 
-// Swagger Documentation
-$route['swagger'] = 'swagger';
-$route['swagger.json'] = 'swagger/json';
+// Swagger/OpenAPI Documentation Routes
+$route['swagger'] = 'swagger/index';
+$route['swagger/'] = 'swagger/index';
+$route['swagger/spec'] = 'swagger/spec';
+$route['swagger/download'] = 'swagger/download';
+$route['swagger/yaml'] = 'swagger/yaml';
+$route['api-docs'] = 'swagger/index';
+$route['docs'] = 'swagger/index';

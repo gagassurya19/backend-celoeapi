@@ -11,11 +11,6 @@ class Migration_Create_log_scheduler extends CI_Migration {
                 'constraint' => 20,
                 'auto_increment' => TRUE
             ],
-            'batch_name' => [
-                'type' => 'VARCHAR',
-                'constraint' => 100,
-                'null' => FALSE
-            ],
             'offset' => [
                 'type' => 'INT',
                 'constraint' => 10,
@@ -34,21 +29,12 @@ class Migration_Create_log_scheduler extends CI_Migration {
                 'null' => FALSE,
                 'comment' => '1=finished, 2=inprogress, 3=failed'
             ],
-            'limit_size' => [
-                'type' => 'INT',
-                'constraint' => 11,
-                'default' => 1000
-            ],
             'start_date' => [
                 'type' => 'DATETIME',
                 'null' => TRUE
             ],
             'end_date' => [
                 'type' => 'DATETIME',
-                'null' => TRUE
-            ],
-            'error_details' => [
-                'type' => 'TEXT',
                 'null' => TRUE
             ],
             'created_at' => [
@@ -62,7 +48,8 @@ class Migration_Create_log_scheduler extends CI_Migration {
         $this->dbforge->add_key('start_date');
         $this->dbforge->add_key('end_date');
         
-        $this->dbforge->create_table('log_scheduler');
+        // Add IF NOT EXISTS to avoid error when table already exists
+        $this->dbforge->create_table('log_scheduler', TRUE);
     }
 
     public function down()
