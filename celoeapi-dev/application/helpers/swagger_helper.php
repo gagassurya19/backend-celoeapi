@@ -157,6 +157,18 @@ function get_public_methods($file_path, $class_name) {
         }
     }
     
+    // Also look for REST_Controller specific methods (e.g., run_pipeline_post)
+    preg_match_all('/public\s+function\s+(\w+)_(get|post|put|delete)\s*\(/', $content, $rest_matches);
+    
+    if (isset($rest_matches[1]) && isset($rest_matches[2])) {
+        for ($i = 0; $i < count($rest_matches[1]); $i++) {
+            $method_name = $rest_matches[1][$i] . '_' . $rest_matches[2][$i];
+            if (!in_array($method_name, $methods)) {
+                $methods[] = $method_name;
+            }
+        }
+    }
+    
     return $methods;
 }
 
@@ -182,7 +194,7 @@ function generate_endpoint_from_method($controller_name, $method_name, $content,
             'description' => generate_description($method_name),
             'security' => [['BearerAuth' => []]],
             'parameters' => generate_parameters($method_name, $content),
-            'requestBody' => generate_request_body($method_name),
+            'requestBody' => generate_request_body($method_name, $content),
             'responses' => generate_responses($method_name)
         ]
     ];
@@ -242,6 +254,11 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
     // Clean up method name by removing HTTP method suffixes
     $clean_method_name = preg_replace('/_(get|post|put|delete)$/', '', $method_name);
     
+    // Handle special cases for ETL methods
+    if ($clean_method_name === 'run_pipeline') {
+        return '/' . $path . '/run_pipeline';
+    }
+    
     if ($clean_method_name === 'index') {
         return '/' . $path;
     }
@@ -269,6 +286,25 @@ function generate_tag_from_controller($controller_name) {
 function generate_summary($method_name) {
     // Clean up method name by removing HTTP method suffixes
     $clean_method_name = preg_replace('/_(get|post|put|delete)$/', '', $method_name);
+    
+    // Provide specific summaries for ETL methods
+    $summary_mappings = [
+        'run_pipeline' => 'Run ETL Pipeline with Date Range',
+        'export' => 'Export Data',
+        'status' => 'Get Status',
+        'clean_data' => 'Clean Data',
+        'list' => 'List Records',
+        'get' => 'Get Record',
+        'create' => 'Create Record',
+        'update' => 'Update Record',
+        'delete' => 'Delete Record'
+    ];
+    
+    if (isset($summary_mappings[$clean_method_name])) {
+        return $summary_mappings[$clean_method_name];
+    }
+    
+    // Fallback to generic summary
     $summary = str_replace('_', ' ', $clean_method_name);
     $summary = ucwords($summary);
     return $summary;
@@ -280,6 +316,25 @@ function generate_summary($method_name) {
 function generate_description($method_name) {
     // Clean up method name by removing HTTP method suffixes
     $clean_method_name = preg_replace('/_(get|post|put|delete)$/', '', $method_name);
+    
+    // Provide specific descriptions for ETL methods
+    $description_mappings = [
+        'run_pipeline' => 'Start ETL pipeline processing for a specified date range. Supports both automatic date detection and manual date range specification.',
+        'export' => 'Export data with optional filtering and pagination.',
+        'status' => 'Get current status and progress information.',
+        'clean_data' => 'Clean existing data for specified parameters.',
+        'list' => 'Retrieve a list of records with pagination support.',
+        'get' => 'Retrieve a specific record by identifier.',
+        'create' => 'Create a new record.',
+        'update' => 'Update an existing record.',
+        'delete' => 'Delete a record.'
+    ];
+    
+    if (isset($description_mappings[$clean_method_name])) {
+        return $description_mappings[$clean_method_name];
+    }
+    
+    // Fallback to generic description
     $description = str_replace('_', ' ', $clean_method_name);
     $description = ucwords($description);
     return $description . ' operation';
@@ -291,6 +346,7 @@ function generate_description($method_name) {
 function generate_parameters($method_name, $content) {
     $parameters = [];
     
+    // Add generic parameters for list/get methods
     if (strpos($method_name, 'list') !== false || strpos($method_name, 'get') !== false) {
         $parameters[] = [
             'name' => 'limit',
@@ -308,14 +364,86 @@ function generate_parameters($method_name, $content) {
         ];
     }
     
+    // Analyze controller content for specific query parameters (not body parameters)
+    $specific_params = analyze_controller_parameters($method_name, $content);
+    if (!empty($specific_params)) {
+        $parameters = array_merge($parameters, $specific_params);
+    }
+    
+    return $parameters;
+}
+
+/**
+ * Analyze controller content to detect specific parameters
+ */
+function analyze_controller_parameters($method_name, $content) {
+    $parameters = [];
+    
+    // Check for date parameter in export methods (query parameter)
+    if (strpos($content, 'date') !== false && strpos($method_name, 'export') !== false) {
+        $parameters[] = [
+            'name' => 'date',
+            'in' => 'query',
+            'description' => 'Extraction date (YYYY-MM-DD format)',
+            'required' => false,
+            'schema' => [
+                'type' => 'string',
+                'format' => 'date',
+                'pattern' => '^\d{4}-\d{2}-\d{2}$',
+                'example' => '2024-01-15'
+            ]
+        ];
+    }
+    
     return $parameters;
 }
 
 /**
  * Generate request body for endpoint
  */
-function generate_request_body($method_name) {
-    if (strpos($method_name, 'post') === 0 || strpos($method_name, 'put') === 0 || strpos($method_name, 'create') === 0 || strpos($method_name, 'update') === 0) {
+function generate_request_body($method_name, $content) {
+    // Check if this is a POST/PUT method (including REST_Controller suffixes)
+    $is_post_method = preg_match('/_post$/', $method_name) || strpos($method_name, 'post') === 0;
+    $is_put_method = preg_match('/_put$/', $method_name) || strpos($method_name, 'put') === 0;
+    $is_create_method = strpos($method_name, 'create') === 0;
+    $is_update_method = strpos($method_name, 'update') === 0;
+    
+    if ($is_post_method || $is_put_method || $is_create_method || $is_update_method) {
+        // Check if this is an ETL method that expects date range
+        if (strpos($method_name, 'run_pipeline') !== false || (strpos($method_name, 'etl') !== false && strpos($content, 'start_date') !== false)) {
+            return [
+                'required' => false,
+                'content' => [
+                    'application/json' => [
+                        'schema' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'start_date' => [
+                                    'type' => 'string',
+                                    'format' => 'date',
+                                    'pattern' => '^\d{4}-\d{2}-\d{2}$',
+                                    'description' => 'Start date for ETL processing (YYYY-MM-DD format)',
+                                    'example' => '2024-01-01'
+                                ],
+                                'end_date' => [
+                                    'type' => 'string',
+                                    'format' => 'date',
+                                    'pattern' => '^\d{4}-\d{2}-\d{2}$',
+                                    'description' => 'End date for ETL processing (YYYY-MM-DD format)',
+                                    'example' => '2024-01-31'
+                                ]
+                            ],
+                            'example' => [
+                                'start_date' => '2024-01-01',
+                                'end_date' => '2024-01-31'
+                            ]
+                        ]
+                    ]
+                ]
+            ];
+        }
+        
+        // Default request body for other POST methods
         return [
             'required' => true,
             'content' => [
@@ -335,6 +463,35 @@ function generate_request_body($method_name) {
  * Generate responses for endpoint
  */
 function generate_responses($method_name) {
+    // Check if this is an ETL method that returns date range information
+    if (strpos($method_name, 'run_pipeline') !== false || strpos($method_name, 'etl') !== false) {
+        return [
+            '200' => [
+                'description' => 'ETL pipeline started successfully',
+                'content' => [
+                    'application/json' => [
+                        'schema' => [
+                            '$ref' => '#/components/schemas/ETLResponse'
+                        ]
+                    ]
+                ]
+            ],
+            '400' => [
+                'description' => 'Bad request - Invalid date format or range',
+                'content' => [
+                    'application/json' => [
+                        'schema' => [
+                            '$ref' => '#/components/schemas/ETLErrorResponse'
+                        ]
+                    ]
+                ]
+            ],
+            '401' => ['$ref' => '#/components/schemas/UnauthorizedError'],
+            '500' => ['$ref' => '#/components/schemas/ServerError']
+        ];
+    }
+    
+    // Default responses for other methods
     return [
         '200' => [
             'description' => 'Success',
@@ -412,6 +569,58 @@ function auto_discover_schemas() {
                 'message' => [
                     'type' => 'string',
                     'example' => 'Internal server error'
+                ]
+            ]
+        ],
+        
+        // ETL specific schemas
+        'ETLResponse' => [
+            'type' => 'object',
+            'properties' => [
+                'status' => [
+                    'type' => 'boolean',
+                    'example' => true
+                ],
+                'message' => [
+                    'type' => 'string',
+                    'example' => 'ETL pipeline started in background with date range'
+                ],
+                'date_range' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'start_date' => [
+                            'type' => 'string',
+                            'format' => 'date',
+                            'example' => '2024-01-01'
+                        ],
+                        'end_date' => [
+                            'type' => 'string',
+                            'format' => 'date',
+                            'example' => '2024-01-31'
+                        ]
+                    ]
+                ],
+                'note' => [
+                    'type' => 'string',
+                    'example' => 'Check logs for ETL progress and completion status'
+                ]
+            ]
+        ],
+        
+        'ETLErrorResponse' => [
+            'type' => 'object',
+            'properties' => [
+                'status' => [
+                    'type' => 'boolean',
+                    'example' => false
+                ],
+                'message' => [
+                    'type' => 'string',
+                    'example' => 'ETL pipeline failed to start'
+                ],
+                'error' => [
+                    'type' => 'string',
+                    'example' => 'Invalid date format. Use YYYY-MM-DD format.'
                 ]
             ]
         ]

@@ -10,6 +10,7 @@ class cp_course_performance_etl_model extends CI_Model
     private $start_time;
     private $memory_peak = 0;
     private $moodle_db; // Store Moodle database name
+    private $moodle_db_connection; // Store Moodle database connection
 
     public function __construct()
     {
@@ -18,8 +19,15 @@ class cp_course_performance_etl_model extends CI_Model
         $this->batch_size = self::BATCH_SIZE;
         $this->start_time = microtime(true);
         
-        // Get Moodle database name from config
-        $this->moodle_db = $this->db->database;
+        // Set Moodle database name correctly
+        $this->moodle_db = 'moodle';
+        
+        // Load Moodle database connection
+        $this->load->database('moodle', TRUE);
+        $this->moodle_db_connection = $this->db;
+        
+        // Load back the default database (celoeapi)
+        $this->load->database('default', TRUE);
         
         // Optimize database connection for ETL workload
         $this->optimize_database_connection();
