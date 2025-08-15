@@ -5,30 +5,39 @@
     require APPPATH . 'libraries/REST_Controller.php';
     require APPPATH . 'libraries/Format.php';
 
-    class ETL_Course_Performance extends REST_Controller {
+    class etl_course_performance extends REST_Controller {
+
+        // Export properties
+        private $batch_size = 1000; // Records per page
+        private $available_tables = [
+            'course_activity_summary',
+            'course_summary', 
+            'student_assignment_detail',
+            'student_profile',
+            'student_quiz_detail',
+            'student_resource_access'
+        ];
 
         function __construct()
         {
             parent::__construct();
             $this->load->database();
-            $this->load->model('ETL_course_performance_model', 'm_ETL');
-            $this->load->helper('auth');
-            $this->load->config('etl');
+            $this->load->model('cp_course_performance_etl_model', 'm_ETL');
+            $this->load->model('cp_export_model', 'm_export');
+            // Auth helper removed - no authentication required
+            // ETL config removed - no webhook tokens needed
+            
+            // Set headers for large data responses
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
         }
 
         // POST /api/etl/run - Manually trigger ETL process
         public function run_post() 
         {      
             try {
-                // Basic authentication check (you can enhance this based on your webhook auth needs)
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 log_message('info', 'Manual ETL trigger requested');
                 
@@ -65,15 +74,7 @@
         public function status_get() 
         {      
             try {
-                // Basic authentication check
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 $status = $this->m_ETL->get_etl_status();
                 
@@ -96,15 +97,7 @@
         public function logs_get() 
         {      
             try {
-                // Basic authentication check
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 // Get query parameters
                 $limit = $this->get('limit') ? (int)$this->get('limit') : 20;
@@ -131,15 +124,7 @@
         public function run_incremental_post() 
         {      
             try {
-                // Basic authentication check
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 log_message('info', 'Incremental ETL trigger requested');
                 
@@ -176,15 +161,7 @@
         public function clear_stuck_post() 
         {      
             try {
-                // Basic authentication check
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 log_message('info', 'Clear stuck ETL processes requested');
                 
@@ -208,18 +185,10 @@
         }
 
         // POST /api/etl/force-clear - Force clear all inprogress ETL processes
-        public function force_clear_post() 
+        public function run_force_clear_post() 
         {      
             try {
-                // Basic authentication check
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 log_message('info', 'Force clear all inprogress ETL processes requested');
                 
@@ -246,15 +215,7 @@
         public function debug_get() 
         {      
             try {
-                // Basic authentication check
-                $auth_header = $this->input->get_request_header('Authorization', TRUE);
-                if (!$this->_validate_webhook_token($auth_header)) {
-                    $this->response([
-                        'status' => false,
-                        'message' => 'Unauthorized'
-                    ], REST_Controller::HTTP_UNAUTHORIZED);
-                    return;
-                }
+                // Authentication disabled - endpoint accessible to anyone
 
                 // Get all ETL processes from database
                 $all_processes = $this->db->query("SELECT * FROM celoeapi.log_scheduler ORDER BY id DESC LIMIT 10")->result();
@@ -281,17 +242,99 @@
             }
         }
 
-        // Simple webhook token validation (you can enhance this)
-        private function _validate_webhook_token($auth_header) 
+        // Authentication validation removed - endpoints accessible to anyone
+
+        /**
+         * GET /api/etl/export/bulk
+         * Bulk export all tables with concurrent processing
+         */
+        public function export_bulk_get()
         {
-            // Extract token from Authorization header (Bearer token)
-            if (strpos($auth_header, 'Bearer ') === 0) {
-                $token = substr($auth_header, 7);
-                // Load valid tokens from config
-                $valid_tokens = $this->config->item('etl_webhook_tokens');
-                return in_array($token, $valid_tokens);
+            try {
+                // Authentication disabled - endpoint accessible to anyone
+
+                // Get parameters
+                $page = (int)$this->get('page') ?: 1;
+                $limit = (int)$this->get('limit') ?: $this->batch_size;
+                $tables = $this->get('tables') ? explode(',', $this->get('tables')) : $this->available_tables;
+
+                // Validate tables parameter
+                $valid_tables = [];
+                foreach ($tables as $table) {
+                    if (in_array($table, $this->available_tables)) {
+                        $valid_tables[] = $table;
+                    }
+                }
+
+                if (empty($valid_tables)) {
+                    $this->response([
+                        'status' => false,
+                        'message' => 'No valid tables specified. Available tables: ' . implode(', ', $this->available_tables)
+                    ], REST_Controller::HTTP_BAD_REQUEST);
+                    return;
+                }
+
+                // Validate parameters
+                if ($limit > 5000) {
+                    $this->response([
+                        'status' => false,
+                        'message' => 'Maximum limit is 5000 records per request'
+                    ], REST_Controller::HTTP_BAD_REQUEST);
+                    return;
+                }
+
+                $result = $this->m_export->bulk_export($valid_tables, $page, $limit);
+                
+                $this->response([
+                    'status' => true,
+                    'data' => $result['data'],
+                    'pagination' => $result['pagination'],
+                    'meta' => [
+                        'tables' => $valid_tables,
+                        'available_tables' => $this->available_tables,
+                        'exported_at' => date('Y-m-d H:i:s'),
+                        'concurrent_processing' => true
+                    ]
+                ], REST_Controller::HTTP_OK);
+
+            } catch (Exception $e) {
+                log_message('error', 'Bulk export failed: ' . $e->getMessage());
+                $this->response([
+                    'status' => false,
+                    'message' => 'Failed to perform bulk export',
+                    'error' => $e->getMessage()
+                ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
             }
-            return false;
+        }
+
+        /**
+         * GET /api/etl/export/status
+         * Get export status and statistics for all tables
+         */
+        public function export_status_get()
+        {
+            try {
+                // Authentication disabled - endpoint accessible to anyone
+
+                $status = $this->m_export->get_export_status();
+                
+                $this->response([
+                    'status' => true,
+                    'data' => $status,
+                    'meta' => [
+                        'available_tables' => $this->available_tables,
+                        'exported_at' => date('Y-m-d H:i:s')
+                    ]
+                ], REST_Controller::HTTP_OK);
+
+            } catch (Exception $e) {
+                log_message('error', 'Export status failed: ' . $e->getMessage());
+                $this->response([
+                    'status' => false,
+                    'message' => 'Failed to get export status',
+                    'error' => $e->getMessage()
+                ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+            }
         }
 
         // Run ETL process in background

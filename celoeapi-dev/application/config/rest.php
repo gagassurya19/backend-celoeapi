@@ -110,7 +110,7 @@ $config['rest_realm'] = 'REST API';
 |           authorization key
 |
 */
-$config['rest_auth'] = FALSE;
+$config['rest_auth'] = 'none';
 
 /*
 |--------------------------------------------------------------------------
@@ -137,8 +137,8 @@ $config['auth_source'] = 'ldap';
 | requests etc), set to TRUE;
 |
 */
-$config['allow_auth_and_keys'] = TRUE;
-$config['strict_api_and_auth'] = TRUE; // force the use of both api and auth before a valid api request is made
+$config['allow_auth_and_keys'] = FALSE;
+$config['strict_api_and_auth'] = FALSE; // disable authentication requirements
 
 /*
 |--------------------------------------------------------------------------
@@ -179,10 +179,9 @@ $config['auth_library_function'] = '';
 | Acceptable values are; 'none', 'digest' and 'basic'.
 |
 */
-// $config['auth_override_class_method']['deals']['view'] = 'none';
-// $config['auth_override_class_method']['deals']['insert'] = 'digest';
-// $config['auth_override_class_method']['accounts']['user'] = 'basic';
-// $config['auth_override_class_method']['dashboard']['*'] = 'basic';
+// Disable authentication for all API controllers
+$config['auth_override_class_method']['etl_course_performance']['*'] = 'none';
+$config['auth_override_class_method']['etl_student_activity_summary']['*'] = 'none';
 
 
 // ---Uncomment list line for the wildard unit test

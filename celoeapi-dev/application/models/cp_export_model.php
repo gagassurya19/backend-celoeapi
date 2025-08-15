@@ -1,5 +1,5 @@
 <?php
-class DataExportCoursePerformance_Model extends CI_Model
+class cp_export_model extends CI_Model
 {
     private $batch_size = 1000;
     private $max_memory_usage = 256; // MB

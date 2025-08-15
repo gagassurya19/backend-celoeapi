@@ -54,9 +54,9 @@ $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
 // API Routes (limited per request)
-$route['api/user_activity_etl/run_pipeline']['POST'] = 'api/user_activity_etl/run_pipeline';
-$route['api/user_activity_etl/export']['GET'] = 'api/user_activity_etl/export';
-$route['api/user_activity_etl/clean_data']['POST'] = 'api/user_activity_etl/clean_data';
+$route['api/etl_student_activity_summary/run_pipeline']['POST'] = 'api/etl_student_activity_summary/run_pipeline';
+$route['api/etl_student_activity_summary/export']['GET'] = 'api/etl_student_activity_summary/export';
+$route['api/etl_student_activity_summary/clean_data']['POST'] = 'api/etl_student_activity_summary/clean_data';
 
 // Swagger/OpenAPI Documentation Routes
 $route['swagger'] = 'swagger/index';

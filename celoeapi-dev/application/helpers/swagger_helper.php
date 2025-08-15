@@ -37,11 +37,7 @@ function generate_swagger_spec() {
                     'description' => 'Local Development Server'
                 ]
             ],
-            'security' => [
-                [
-                    'BearerAuth' => []
-                ]
-            ],
+            'security' => [],
             'tags' => [
                 [
                     'name' => 'ETL',
@@ -50,22 +46,6 @@ function generate_swagger_spec() {
                 [
                     'name' => 'User Activity',
                     'description' => 'User activity ETL and analytics'
-                ],
-                [
-                    'name' => 'ETL Chart',
-                    'description' => 'Chart data ETL processes'
-                ],
-                [
-                    'name' => 'Analytics',
-                    'description' => 'Data analytics and reporting'
-                ],
-                [
-                    'name' => 'Courses',
-                    'description' => 'Course management and analytics'
-                ],
-                [
-                    'name' => 'LMS Reports',
-                    'description' => 'Learning Management System reports'
                 ]
             ]
         ];
@@ -78,15 +58,8 @@ function generate_swagger_spec() {
     if (!isset($config['contact'])) $config['contact'] = ['name' => 'Celoe Development Team', 'email' => 'dev@celoe.com'];
     if (!isset($config['license'])) $config['license'] = ['name' => 'MIT', 'url' => 'https://opensource.org/licenses/MIT'];
     if (!isset($config['servers'])) $config['servers'] = [['url' => 'http://localhost:8081', 'description' => 'Local Development Server']];
-    if (!isset($config['security'])) $config['security'] = [['BearerAuth' => []]];
-    if (!isset($config['tags'])) $config['tags'] = [
-        // ['name' => 'ETL', 'description' => 'Extract, Transform, Load operations'],
-        ['name' => 'User Activity', 'description' => 'User activity ETL and analytics'],
-        // ['name' => 'ETL Chart', 'description' => 'Chart data ETL processes'],
-        // ['name' => 'Analytics', 'description' => 'Data analytics and reporting'],
-        // ['name' => 'Courses', 'description' => 'Course management and analytics'],
-        // ['name' => 'LMS Reports', 'description' => 'Learning Management System reports']
-    ];
+    if (!isset($config['security'])) $config['security'] = [];
+    if (!isset($config['tags'])) $config['tags'] = [];
     
     $spec = [
         'openapi' => '3.0.0',
@@ -98,16 +71,9 @@ function generate_swagger_spec() {
             'license' => $config['license']
         ],
         'servers' => $config['servers'],
-        'security' => $config['security'],
+        'security' => [],
         'paths' => auto_discover_endpoints(),
         'components' => [
-            'securitySchemes' => [
-                'BearerAuth' => [
-                    'type' => 'http',
-                    'scheme' => 'bearer',
-                    'bearerFormat' => 'JWT'
-                ]
-            ],
             'schemas' => auto_discover_schemas()
         ],
         'tags' => $config['tags']
@@ -291,9 +257,7 @@ function generate_tag_from_controller($controller_name) {
     $tag = ucwords($tag);
     
     $tag_mappings = [
-        'User_activity_etl' => 'User Activity',
-        'Etl_chart' => 'ETL Chart',
-        'Lmsreport' => 'LMS Reports'
+        'User_activity_etl' => 'User Activity'
     ];
     
     return isset($tag_mappings[$controller_name]) ? $tag_mappings[$controller_name] : $tag;

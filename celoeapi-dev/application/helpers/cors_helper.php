@@ -25,7 +25,7 @@ if (!function_exists('set_cors_headers')) {
         $CI->load->config('cors', TRUE);
         
         $default_methods = $CI->config->item('cors_allowed_methods', 'cors') ?: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
-        $default_headers = $CI->config->item('cors_allowed_headers', 'cors') ?: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'];
+        $default_headers = $CI->config->item('cors_allowed_headers', 'cors') ?: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']; // Authorization removed
         
         $allowed_methods = $methods ?: $default_methods;
         $allowed_headers = $headers ?: $default_headers;

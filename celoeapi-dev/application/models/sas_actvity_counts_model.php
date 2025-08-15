@@ -1,7 +1,7 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class Activity_counts_model extends CI_Model {
+class sas_actvity_counts_model extends CI_Model {
 
     public function __construct()
     {

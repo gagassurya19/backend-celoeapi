@@ -54,7 +54,7 @@ $config['cors_allowed_headers'] = [
     'X-Requested-With',
     'Content-Type', 
     'Accept',
-    'Authorization',
+            // 'Authorization', // Removed - no authentication required
     'Access-Control-Request-Method',
     'Access-Control-Request-Headers',
     'X-API-KEY',

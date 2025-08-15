@@ -5,17 +5,17 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 require APPPATH . 'libraries/REST_Controller.php';
 require APPPATH . 'libraries/Format.php';
 
-class User_activity_etl extends REST_Controller {
+class etl_student_activity_summary extends REST_Controller {
 
-	// POST /api/user_activity_etl/run_pipeline - Run ETL pipeline with correct flow
+	// POST /api/etl_student_activity_summary/run_pipeline - Run ETL pipeline with correct flow
 	public function run_pipeline_post()
     {
 		try {
 			// Ensure dependencies are loaded
         $this->load->database();
-        $this->load->model('User_activity_etl_model', 'm_user_activity');
-        $this->load->model('Activity_counts_model', 'm_activity_counts');
-        $this->load->model('User_counts_model', 'm_user_counts');
+        $this->load->model('sas_user_activity_etl_model', 'm_user_activity');
+        $this->load->model('sas_actvity_counts_model', 'm_activity_counts');
+        $this->load->model('sas_user_counts_model', 'm_user_counts');
 
             log_message('info', 'ETL pipeline triggered with correct flow');
             
@@ -128,12 +128,12 @@ class User_activity_etl extends REST_Controller {
         }
     }
 
-    // GET /api/user_activity_etl/export - Export ETL data with pagination
+            // GET /api/etl_student_activity_summary/export - Export ETL data with pagination
     public function export_get() 
     {      
         try {
 			$this->load->database();
-			$this->load->model('User_activity_etl_model', 'm_user_activity');
+			$this->load->model('sas_user_activity_etl_model', 'm_user_activity');
 
             $limit = $this->input->get('limit') ?: 100;
             $offset = $this->input->get('offset') ?: 0;
@@ -183,12 +183,12 @@ class User_activity_etl extends REST_Controller {
         }
     }
 
-    // POST /api/user_activity_etl/clean_data - Clean ETL data for specific date
+            // POST /api/etl_student_activity_summary/clean_data - Clean ETL data for specific date
     public function clean_data_post() 
     {      
         try {
 			$this->load->database();
-			$this->load->model('User_activity_etl_model', 'm_user_activity');
+			$this->load->model('sas_user_activity_etl_model', 'm_user_activity');
 
 			// Get date from JSON or POST, default yesterday
 			$json_data = json_decode($this->input->raw_input_stream, true);

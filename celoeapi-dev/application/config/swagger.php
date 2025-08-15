@@ -32,35 +32,23 @@ $config['swagger'] = [
             'description' => 'Production Server'
         ]
     ],
-    'security' => [
-        [
-            'BearerAuth' => []
-        ]
-    ],
+    'security' => [],
     'tags' => [
         [
             'name' => 'ETL',
             'description' => 'Extract, Transform, Load operations'
         ],
         [
-            'name' => 'User Activity',
-            'description' => 'User activity ETL and analytics'
+            'name' => 'Student Activity Summary',
+            'description' => 'Student activity ETL and analytics'
         ],
         [
-            'name' => 'ETL Chart',
-            'description' => 'Chart data ETL processes'
+            'name' => 'Data Export',
+            'description' => 'Data export operations'
         ],
         [
             'name' => 'Analytics',
             'description' => 'Data analytics and reporting'
-        ],
-        [
-            'name' => 'Courses',
-            'description' => 'Course management and analytics'
-        ],
-        [
-            'name' => 'LMS Reports',
-            'description' => 'Learning Management System reports'
         ]
     ]
 ];

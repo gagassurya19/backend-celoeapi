@@ -213,11 +213,7 @@
                 showCommonExtensions: true,
                 tryItOutEnabled: true,
                 requestInterceptor: function(request) {
-                    // Add default authorization header if available
-                    const token = localStorage.getItem('swagger_token');
-                    if (token) {
-                        request.headers['Authorization'] = 'Bearer ' + token;
-                    }
+                    // Authentication disabled - no authorization header needed
                     return request;
                 },
                 onComplete: function() {

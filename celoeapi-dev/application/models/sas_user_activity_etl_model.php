@@ -1,7 +1,7 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class User_activity_etl_model extends CI_Model {
+class sas_user_activity_etl_model extends CI_Model {
 
 	public function __construct()
 	{

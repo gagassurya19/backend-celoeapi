@@ -24,7 +24,7 @@ class Cors
             'X-Requested-With', 
             'Content-Type', 
             'Accept', 
-            'Authorization',
+            // 'Authorization', // Removed - no authentication required
             'Access-Control-Request-Method',
             'Access-Control-Request-Headers',
             'X-API-KEY',
@@ -86,7 +86,7 @@ class Cors
          public static function handle_manual_cors($origins = ['*'], $methods = null, $headers = null)
      {
          $default_methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
-         $default_headers = ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'];
+         $default_headers = ['Origin', 'X-Requested-With', 'Content-Type', 'Accept']; // Authorization removed
          
          $allowed_methods = $methods ?: $default_methods;
          $allowed_headers = $headers ?: $default_headers;
