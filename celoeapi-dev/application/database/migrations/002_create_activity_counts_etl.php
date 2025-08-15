@@ -70,11 +70,11 @@ class Migration_Create_activity_counts_etl extends CI_Migration {
         $this->dbforge->add_key('courseid');
         $this->dbforge->add_key('extraction_date');
         
-        $this->dbforge->create_table('activity_counts_etl', TRUE);
+        $this->dbforge->create_table('sas_activity_counts_etl', TRUE);
     }
 
     public function down()
     {
-        $this->dbforge->drop_table('activity_counts_etl');
+        $this->dbforge->drop_table('sas_activity_counts_etl');
     }
 } 

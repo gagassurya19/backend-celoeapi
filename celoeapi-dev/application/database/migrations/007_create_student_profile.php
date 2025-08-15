@@ -87,11 +87,11 @@ class Migration_Create_student_profile extends CI_Migration {
         $this->dbforge->add_key('extraction_date');
         $this->dbforge->add_key(['user_id', 'extraction_date'], FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('student_profile', TRUE);
+        $this->dbforge->create_table('cp_student_profile', TRUE);
     }
 
     public function down()
     {
-        $this->dbforge->drop_table('student_profile');
+        $this->dbforge->drop_table('cp_student_profile');
     }
 }

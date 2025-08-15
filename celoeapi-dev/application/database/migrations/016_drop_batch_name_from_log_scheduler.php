@@ -5,14 +5,14 @@ class Migration_Drop_batch_name_from_log_scheduler extends CI_Migration {
 
 	public function up()
 	{
-		if ($this->db->field_exists('batch_name', 'log_scheduler')) {
-			$this->dbforge->drop_column('log_scheduler', 'batch_name');
+		if ($this->db->field_exists('batch_name', 'shared_log_scheduler')) {
+			$this->dbforge->drop_column('shared_log_scheduler', 'batch_name');
 		}
 	}
 
 	public function down()
 	{
-		if (!$this->db->field_exists('batch_name', 'log_scheduler')) {
+		if (!$this->db->field_exists('batch_name', 'shared_log_scheduler')) {
 			$fields = [
 				'batch_name' => [
 					'type' => 'VARCHAR',
@@ -20,7 +20,7 @@ class Migration_Drop_batch_name_from_log_scheduler extends CI_Migration {
 					'null' => FALSE
 				]
 			];
-			$this->dbforge->add_column('log_scheduler', $fields);
+			$this->dbforge->add_column('shared_log_scheduler', $fields);
 		}
 	}
 } 

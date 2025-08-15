@@ -309,12 +309,12 @@ class cp_export_model extends CI_Model
         
         // Get table statistics
         $tables = [
-            'course_activity_summary',
-            'student_profile',
-            'student_quiz_detail',
-            'student_assignment_detail',
-            'student_resource_access',
-            'course_summary'
+            'cp_course_activity_summary',
+            'cp_student_profile',
+            'cp_student_quiz_detail',
+            'cp_student_assignment_detail',
+            'cp_student_resource_access',
+            'cp_course_summary'
         ];
         
         foreach ($tables as $table) {
@@ -384,22 +384,22 @@ class cp_export_model extends CI_Model
             try {
                 // Get table data based on table name
                 switch ($table) {
-                    case 'course_activity_summary':
+                    case 'cp_course_activity_summary':
                         $table_data = $this->get_course_activity_summary($page, $limit);
                         break;
-                    case 'student_profile':
+                    case 'cp_student_profile':
                         $table_data = $this->get_student_profile($page, $limit);
                         break;
-                    case 'student_quiz_detail':
+                    case 'cp_student_quiz_detail':
                         $table_data = $this->get_student_quiz_detail($page, $limit);
                         break;
-                    case 'student_assignment_detail':
+                    case 'cp_student_assignment_detail':
                         $table_data = $this->get_student_assignment_detail($page, $limit);
                         break;
-                    case 'student_resource_access':
+                    case 'cp_student_resource_access':
                         $table_data = $this->get_student_resource_access($page, $limit);
                         break;
-                    case 'course_summary':
+                    case 'cp_course_summary':
                         $table_data = $this->get_course_summary($page, $limit);
                         break;
                     default:

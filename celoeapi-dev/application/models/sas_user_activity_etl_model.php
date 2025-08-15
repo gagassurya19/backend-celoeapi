@@ -15,7 +15,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_etl_status()
 	{
 		$this->db->select('*');
-		$this->db->from('etl_status');
+		$this->db->from('sas_etl_status');
 		$this->db->where('process_name', 'user_activity_etl');
 		$this->db->order_by('created_at', 'DESC');
 		$this->db->limit(1);
@@ -61,7 +61,7 @@ class sas_user_activity_etl_model extends CI_Model {
 			$data['duration_seconds'] = time() - strtotime($data['start_time']);
 		}
 		
-		return $this->db->insert('etl_status', $data);
+		return $this->db->insert('sas_etl_status', $data);
 	}
 
 	/**
@@ -89,7 +89,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_etl_logs($limit = 50, $offset = 0)
 	{
 		$this->db->select('*');
-		$this->db->from('etl_status');
+		$this->db->from('sas_etl_status');
 		$this->db->where('process_name', 'user_activity_etl');
 		$this->db->order_by('created_at', 'DESC');
 		$this->db->limit($limit, $offset);
@@ -115,7 +115,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_activity_counts($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('activity_counts_etl');
+		$this->db->from('sas_activity_counts_etl');
 		$this->db->where('courseid', $course_id);
 		
 		if ($date) {
@@ -135,7 +135,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_user_counts($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('user_counts_etl');
+		$this->db->from('sas_user_counts_etl');
 		$this->db->where('courseid', $course_id);
 		
 		if ($date) {
@@ -155,7 +155,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_course_summary($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('course_summary');
+		$this->db->from('cp_course_summary');
 		$this->db->where('course_id', $course_id);
 		
 		if ($date) {
@@ -175,7 +175,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_profiles($limit = 100, $offset = 0, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_profile');
+		$this->db->from('cp_student_profile');
 		
 		if ($date) {
 			$this->db->where('extraction_date', $date);
@@ -194,7 +194,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_quiz_details($user_id, $course_id = null, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_quiz_detail');
+		$this->db->from('cp_student_quiz_detail');
 		$this->db->where('user_id', $user_id);
 		
 		if ($course_id) {
@@ -217,7 +217,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_assignment_details($user_id, $course_id = null, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_assignment_detail');
+		$this->db->from('cp_student_assignment_detail');
 		$this->db->where('user_id', $user_id);
 		
 		if ($course_id) {
@@ -240,7 +240,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_resource_access($user_id, $course_id = null, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_resource_access');
+		$this->db->from('cp_student_resource_access');
 		$this->db->where('user_id', $user_id);
 		
 		if ($course_id) {
@@ -263,7 +263,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_raw_logs($limit = 100, $offset = 0, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('raw_log');
+		$this->db->from('cp_raw_log');
 		
 		if ($date) {
 			$this->db->where('extraction_date', $date);
@@ -282,7 +282,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_course_activity_summary($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('course_activity_summary');
+		$this->db->from('cp_course_activity_summary');
 		$this->db->where('course_id', $course_id);
 		
 		if ($date) {
@@ -523,8 +523,8 @@ class sas_user_activity_etl_model extends CI_Model {
 				ON c.category = program.id AND program.depth = 2
 			LEFT JOIN `{$moodle_db_name}`.`mdl_course_categories` faculty
 				ON faculty.id = program.parent AND faculty.depth = 1
-			LEFT JOIN `{$main_db_name}`.`activity_counts_etl` ac ON c.id = ac.courseid AND ac.extraction_date = ?
-			LEFT JOIN `{$main_db_name}`.`user_counts_etl` uc ON c.id = uc.courseid AND uc.extraction_date = ?
+			LEFT JOIN `{$main_db_name}`.`sas_activity_counts_etl` ac ON c.id = ac.courseid AND ac.extraction_date = ?
+			LEFT JOIN `{$main_db_name}`.`sas_user_counts_etl` uc ON c.id = uc.courseid AND uc.extraction_date = ?
 			WHERE c.visible = 1 AND c.idnumber IS NOT NULL AND c.idnumber != ''
 		";
 		
@@ -602,7 +602,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		// Clear existing data for this date
 		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('activity_counts_etl');
+		$this->db->delete('sas_activity_counts_etl');
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -619,7 +619,7 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('activity_counts_etl', $etl_data);
+			$this->db->insert('sas_activity_counts_etl', $etl_data);
 		}
 		
 		return true;
@@ -634,7 +634,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		// Clear existing data for this date
 		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('user_counts_etl');
+		$this->db->delete('sas_user_counts_etl');
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -646,7 +646,7 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('user_counts_etl', $etl_data);
+			$this->db->insert('sas_user_counts_etl', $etl_data);
 		}
 		
 		return true;
@@ -659,8 +659,8 @@ class sas_user_activity_etl_model extends CI_Model {
 	{
 		$tables = [
 			'user_activity_etl',
-			'activity_counts_etl',
-			'user_counts_etl'
+			'sas_activity_counts_etl',
+			'sas_user_counts_etl'
 		];
 		
 		$total_affected = 0;
@@ -724,9 +724,9 @@ class sas_user_activity_etl_model extends CI_Model {
 			// Update scheduler status to failed
 			if (isset($scheduler_data['id'])) {
 				$this->db->where('id', $scheduler_data['id']);
-				$this->db->update('log_scheduler', [
-					'status' => 3, // Failed
-				]);
+						$this->db->update('shared_log_scheduler', [
+			'status' => 3, // Failed
+		]);
 			}
 			
 			throw $e;
@@ -739,7 +739,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_scheduler_data_for_extraction()
 	{
 		$this->db->select('*');
-		$this->db->from('log_scheduler');
+		$this->db->from('shared_log_scheduler');
 		$this->db->order_by('id', 'DESC');
 		$this->db->limit(1);
 		
@@ -764,18 +764,17 @@ class sas_user_activity_etl_model extends CI_Model {
 		$yesterday = date('Y-m-d', strtotime('-1 day'));
 		
 		$data = [
-			'batch_name' => 'user_activity',
 			'offset' => 0,
 			'numrow' => 0,
 			'status' => 0, // Not running
-			'limit_size' => 1000,
 			'start_date' => $yesterday . ' 00:00:00',
 			'end_date' => $yesterday . ' 23:59:59',
+			'category' => 'etl_user_activity',
 			'created_at' => date('Y-m-d H:i:s')
 		];
 		
 		log_message('info', 'First date extraction initialized for user_activity batch');
-		return $this->db->insert('log_scheduler', $data);
+		return $this->db->insert('shared_log_scheduler', $data);
 	}
 
 	/**
@@ -821,7 +820,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	private function get_latest_scheduler_id()
 	{
 		$this->db->select('id');
-		$this->db->from('log_scheduler');
+		$this->db->from('shared_log_scheduler');
 		$this->db->order_by('id', 'DESC');
 		$this->db->limit(1);
 		
@@ -841,11 +840,11 @@ class sas_user_activity_etl_model extends CI_Model {
 		$scheduler_id = $this->get_latest_scheduler_id();
 		
 		if ($scheduler_id) {
-			$this->db->where('id', $scheduler_id);
-			$this->db->update('log_scheduler', [
-				'status' => 1, // Finished (completed)
-				'end_date' => date('Y-m-d H:i:s'),
-			]);
+					$this->db->where('id', $scheduler_id);
+		$this->db->update('shared_log_scheduler', [
+			'status' => 1, // Finished (completed)
+			'end_date' => date('Y-m-d H:i:s'),
+		]);
 			
 			log_message('info', 'Scheduler status updated to finished (1) for date: ' . $extraction_date);
 		} else {
@@ -863,17 +862,16 @@ class sas_user_activity_etl_model extends CI_Model {
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
 		$data = [
-			'batch_name' => 'user_activity',
 			'offset' => 0,
 			'numrow' => 0,
 			'status' => 2, // Inprogress (running)
-			'limit_size' => 1000,
 			'start_date' => date('Y-m-d H:i:s'),
 			'end_date' => null,
+			'category' => 'etl_user_activity',
 			'created_at' => date('Y-m-d H:i:s')
 		];
 		
-		$result = $this->db->insert('log_scheduler', $data);
+		$result = $this->db->insert('shared_log_scheduler', $data);
 		
 		if ($result) {
 			log_message('info', 'New scheduler record created for user_activity batch with date: ' . $extraction_date);
@@ -898,7 +896,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		if ($scheduler_id) {
 			$this->db->where('id', $scheduler_id);
-			$this->db->update('log_scheduler', [
+			$this->db->update('shared_log_scheduler', [
 				'status' => 2, // Inprogress (running)
 				'start_date' => date('Y-m-d H:i:s'),
 			]);
@@ -923,7 +921,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		if ($scheduler_id) {
 			$this->db->where('id', $scheduler_id);
-			$this->db->update('log_scheduler', [
+			$this->db->update('shared_log_scheduler', [
 				'status' => 3, // Failed
 				'end_date' => date('Y-m-d H:i:s'),
 			]);

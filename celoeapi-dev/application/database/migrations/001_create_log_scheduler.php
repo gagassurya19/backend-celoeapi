@@ -49,11 +49,11 @@ class Migration_Create_log_scheduler extends CI_Migration {
         $this->dbforge->add_key('end_date');
         
         // Add IF NOT EXISTS to avoid error when table already exists
-        $this->dbforge->create_table('log_scheduler', TRUE);
+        $this->dbforge->create_table('shared_log_scheduler', TRUE);
     }
 
     public function down()
     {
-        $this->dbforge->drop_table('log_scheduler');
+        $this->dbforge->drop_table('shared_log_scheduler');
     }
 }

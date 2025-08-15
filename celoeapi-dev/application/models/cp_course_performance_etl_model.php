@@ -227,13 +227,13 @@ class cp_course_performance_etl_model extends CI_Model
             
             // Use TRUNCATE for better performance
             $tables = [
-                'student_resource_access',
-                'student_assignment_detail', 
-                'student_quiz_detail',
-                'student_profile',
-                'course_activity_summary',
-                'course_summary',
-                'raw_log'
+                'cp_student_resource_access',
+                'cp_student_assignment_detail', 
+                'cp_student_quiz_detail',
+                'cp_student_profile',
+                'cp_course_activity_summary',
+                'cp_course_summary',
+                'cp_raw_log'
             ];
             
             $this->db->trans_start();
@@ -274,12 +274,12 @@ class cp_course_performance_etl_model extends CI_Model
                 $this->check_memory_usage();
                 
                 $query = "
-                    INSERT INTO celoeapi.raw_log
+                    INSERT INTO celoeapi.cp_raw_log (id, time, userid, ip, course, module, cmid, action, url, info, extraction_date, created_at)
                     SELECT 
-                        id, eventname, component, action, target, objecttable, objectid,
-                        crud, edulevel, contextid, contextlevel, contextinstanceid,
-                        userid, courseid, relateduserid, anonymous, other,
-                        timecreated, origin, ip, realuserid
+                        id, timecreated, userid, ip, courseid, component, contextinstanceid, action, 
+                        CONCAT(component, ':', action) as url, 
+                        CONCAT('eventname:', eventname, ' target:', target) as info,
+                        CURDATE() as extraction_date, NOW() as created_at
                     FROM {$this->moodle_db}.mdl_logstore_standard_log
                     ORDER BY id
                     LIMIT {$this->batch_size} OFFSET {$offset}
@@ -342,45 +342,24 @@ class cp_course_performance_etl_model extends CI_Model
                 $this->check_memory_usage();
                 
                 $query = "
-                    INSERT INTO celoeapi.course_activity_summary (
-                        course_id, section, activity_id, activity_type, activity_name,
-                        accessed_count, submission_count, graded_count, attempted_count
+                    INSERT INTO celoeapi.cp_course_activity_summary (
+                        course_id, course_name, course_shortname, total_activities, total_views, 
+                        total_participants, active_days, extraction_date, created_at
                     )
                     SELECT
-                        c.id, cs.section, cm.instance, m.name,
-                        CASE 
-                            WHEN m.name = 'resource' THEN res.name
-                            WHEN m.name = 'assign' THEN a.name
-                            WHEN m.name = 'quiz' THEN q.name
-                            ELSE 'Unknown'
-                        END,
-                        COUNT(DISTINCT l.userid),
-                        CASE WHEN m.name = 'assign' THEN (
-                            SELECT COUNT(*) FROM {$this->moodle_db}.mdl_assign_submission sub 
-                            WHERE sub.assignment = a.id AND sub.status = 'submitted'
-                        ) ELSE NULL END,
-                        CASE WHEN m.name = 'assign' THEN (
-                            SELECT COUNT(*) FROM {$this->moodle_db}.mdl_grade_grades gg
-                            WHERE gg.itemid IN (
-                                SELECT gi.id FROM {$this->moodle_db}.mdl_grade_items gi
-                                WHERE gi.iteminstance = a.id AND gi.itemmodule = 'assign')
-                            AND gg.finalgrade IS NOT NULL
-                        ) ELSE NULL END,
-                        CASE WHEN m.name = 'quiz' THEN (
-                            SELECT COUNT(*) FROM {$this->moodle_db}.mdl_quiz_attempts qa
-                            WHERE qa.quiz = q.id AND qa.state = 'finished'
-                        ) ELSE NULL END
-                    FROM {$this->moodle_db}.mdl_course_modules cm
-                    JOIN {$this->moodle_db}.mdl_modules m ON m.id = cm.module
-                    JOIN {$this->moodle_db}.mdl_course c ON c.id = cm.course
-                    JOIN {$this->moodle_db}.mdl_course_sections cs ON cs.id = cm.section
-                    LEFT JOIN {$this->moodle_db}.mdl_resource res ON res.id = cm.instance AND m.name = 'resource'
-                    LEFT JOIN {$this->moodle_db}.mdl_assign a ON a.id = cm.instance AND m.name = 'assign'
-                    LEFT JOIN {$this->moodle_db}.mdl_quiz q ON q.id = cm.instance AND m.name = 'quiz'
+                        c.id, c.fullname, c.shortname, 
+                        COUNT(DISTINCT cm.id) as total_activities,
+                        COUNT(DISTINCT l.userid) as total_views,
+                        COUNT(DISTINCT ra.userid) as total_participants,
+                        DATEDIFF(FROM_UNIXTIME(MAX(l.timecreated)), FROM_UNIXTIME(MIN(l.timecreated))) + 1 as active_days,
+                        CURDATE() as extraction_date, NOW() as created_at
+                    FROM {$this->moodle_db}.mdl_course c
+                    LEFT JOIN {$this->moodle_db}.mdl_course_modules cm ON cm.course = c.id
                     LEFT JOIN {$this->moodle_db}.mdl_logstore_standard_log l ON l.contextinstanceid = cm.id 
                         AND l.contextlevel = 70 AND l.action = 'viewed'
-                    WHERE m.name IN ('resource', 'assign', 'quiz') AND c.id = {$course->course_id}
-                    GROUP BY c.id, cs.section, cm.instance, m.name, res.name, a.name, q.name
+                    LEFT JOIN {$this->moodle_db}.mdl_role_assignments ra ON ra.contextid = c.id
+                    WHERE c.id = {$course->course_id} AND c.visible = 1
+                    GROUP BY c.id, c.fullname, c.shortname
                 ";
                 
                 $this->db->trans_start();
@@ -426,11 +405,11 @@ class cp_course_performance_etl_model extends CI_Model
                 
                 // Use JOIN with derived table to avoid MySQL 5.7 LIMIT in subquery limitation
                 $query = "
-                    INSERT INTO celoeapi.student_profile (
-                        user_id, idnumber, full_name, email, program_studi
+                    INSERT INTO celoeapi.cp_student_profile (
+                        user_id, id_number, firstname, lastname, email, department, extraction_date, created_at
                     )
                     SELECT 
-                        u.id, u.idnumber, CONCAT(u.firstname, ' ', u.lastname), u.email, d.data
+                        u.id, u.idnumber, u.firstname, u.lastname, u.email, d.data, CURDATE(), NOW()
                     FROM {$this->moodle_db}.mdl_user u
                     LEFT JOIN {$this->moodle_db}.mdl_user_info_data d ON d.userid = u.id AND d.fieldid = 1
                     INNER JOIN (
@@ -507,9 +486,9 @@ class cp_course_performance_etl_model extends CI_Model
             ['name' => 'idx_mdl_user_role', 'table' => "{$this->moodle_db}.mdl_role_assignments", 'sql' => "CREATE INDEX idx_mdl_user_role ON {$this->moodle_db}.mdl_role_assignments(roleid, userid)"],
             
             // ETL table optimizations
-            ['name' => 'idx_raw_log_composite', 'table' => 'celoeapi.raw_log', 'sql' => "CREATE INDEX idx_raw_log_composite ON celoeapi.raw_log(courseid, userid, timecreated)"],
-            ['name' => 'idx_course_activity_composite', 'table' => 'celoeapi.course_activity_summary', 'sql' => "CREATE INDEX idx_course_activity_composite ON celoeapi.course_activity_summary(course_id, activity_type)"],
-            ['name' => 'idx_student_profile_composite', 'table' => 'celoeapi.student_profile', 'sql' => "CREATE INDEX idx_student_profile_composite ON celoeapi.student_profile(user_id, idnumber)"],
+            ['name' => 'idx_raw_log_composite', 'table' => 'celoeapi.cp_raw_log', 'sql' => "CREATE INDEX idx_raw_log_composite ON celoeapi.cp_raw_log(course, userid, time)"],
+            ['name' => 'idx_course_activity_composite', 'table' => 'celoeapi.cp_course_activity_summary', 'sql' => "CREATE INDEX idx_course_activity_composite ON celoeapi.cp_course_activity_summary(course_id, extraction_date)"],
+            ['name' => 'idx_student_profile_composite', 'table' => 'celoeapi.cp_student_profile', 'sql' => "CREATE INDEX idx_student_profile_composite ON celoeapi.cp_student_profile(user_id, id_number)"],
         ];
         
         foreach ($indexes as $index) {
@@ -585,13 +564,13 @@ class cp_course_performance_etl_model extends CI_Model
     private function analyze_etl_tables()
     {
         $tables = [
-            'celoeapi.raw_log',
-            'celoeapi.course_activity_summary',
-            'celoeapi.student_profile',
-            'celoeapi.student_quiz_detail',
-            'celoeapi.student_assignment_detail',
-            'celoeapi.student_resource_access',
-            'celoeapi.course_summary'
+            'celoeapi.cp_raw_log',
+            'celoeapi.cp_course_activity_summary',
+            'celoeapi.cp_student_profile',
+            'celoeapi.cp_student_quiz_detail',
+            'celoeapi.cp_student_assignment_detail',
+            'celoeapi.cp_student_resource_access',
+            'celoeapi.cp_course_summary'
         ];
         
         foreach ($tables as $table) {
@@ -605,10 +584,10 @@ class cp_course_performance_etl_model extends CI_Model
     private function update_etl_progress($log_id, $etl_step, $processed, $total)
     {
         $progress = round(($processed / $total) * 100, 2);
-        $this->db->query(
-            "UPDATE celoeapi.log_scheduler SET offset = ?, numrow = ? WHERE id = ?",
-            array($processed, $total, $log_id)
-        );
+                    $this->db->query(
+                "UPDATE celoeapi.shared_log_scheduler SET offset = ?, numrow = ? WHERE id = ?",
+                array($processed, $total, $log_id)
+            );
     }
 
     /**
@@ -618,7 +597,7 @@ class cp_course_performance_etl_model extends CI_Model
     {
         $query = $this->db->query("
             SELECT end_date 
-            FROM celoeapi.log_scheduler 
+            FROM celoeapi.shared_log_scheduler 
             WHERE status = 1 
             ORDER BY id DESC 
             LIMIT 1
@@ -668,12 +647,12 @@ class cp_course_performance_etl_model extends CI_Model
     private function etl_raw_log_incremental($last_run_time)
     {
         $query = "
-            INSERT INTO celoeapi.raw_log
+            INSERT INTO celoeapi.cp_raw_log (id, time, userid, ip, course, module, cmid, action, url, info, extraction_date, created_at)
             SELECT 
-                id, eventname, component, action, target, objecttable, objectid,
-                crud, edulevel, contextid, contextlevel, contextinstanceid,
-                userid, courseid, relateduserid, anonymous, other,
-                timecreated, origin, ip, realuserid
+                id, timecreated, userid, ip, courseid, component, contextinstanceid, action, 
+                CONCAT(component, ':', action) as url, 
+                CONCAT('eventname:', eventname, ' target:', target) as info,
+                CURDATE() as extraction_date, NOW() as created_at
             FROM {$this->moodle_db}.mdl_logstore_standard_log
             WHERE FROM_UNIXTIME(timecreated) > '{$last_run_time}'
         ";
@@ -751,7 +730,7 @@ class cp_course_performance_etl_model extends CI_Model
             log_message('info', 'Running ETL 4: student_quiz_detail');
 
             $query = "
-                    INSERT INTO celoeapi.student_quiz_detail (
+                    INSERT INTO celoeapi.cp_student_quiz_detail (
                         quiz_id, user_id, nim, full_name, waktu_mulai, waktu_selesai,
                         durasi_waktu, jumlah_soal, jumlah_dikerjakan, nilai
                     )
@@ -788,7 +767,7 @@ class cp_course_performance_etl_model extends CI_Model
             log_message('info', 'Running ETL 5: student_assignment_detail');
 
             $query = "
-                    INSERT INTO celoeapi.student_assignment_detail (
+                    INSERT INTO celoeapi.cp_student_assignment_detail (
                         assignment_id, user_id, nim, full_name, waktu_submit, waktu_pengerjaan, nilai
                     )
                     SELECT 
@@ -827,7 +806,7 @@ class cp_course_performance_etl_model extends CI_Model
             log_message('info', 'Running ETL 6: student_resource_access');
 
             $query = "
-                    INSERT INTO celoeapi.student_resource_access (
+                    INSERT INTO celoeapi.cp_student_resource_access (
                         resource_id, user_id, nim, full_name, waktu_akses
                     )
                     SELECT 
@@ -859,7 +838,7 @@ class cp_course_performance_etl_model extends CI_Model
             log_message('info', 'Running ETL 7: course_summary');
 
             $query = "
-                    INSERT INTO celoeapi.course_summary (
+                    INSERT INTO celoeapi.cp_course_summary (
                         course_id, course_name, kelas, jumlah_aktivitas, jumlah_mahasiswa, dosen_pengampu
                     )
                     SELECT 
@@ -897,11 +876,11 @@ class cp_course_performance_etl_model extends CI_Model
     {
         try {
             // Get latest ETL run from log_scheduler table
-            $query = $this->db->query("SELECT * FROM celoeapi.log_scheduler ORDER BY id DESC LIMIT 1");
+            $query = $this->db->query("SELECT * FROM celoeapi.shared_log_scheduler ORDER BY id DESC LIMIT 1");
             $last_run = $query->row();
 
             // Check if there's an ETL in progress
-            $running_query = $this->db->query("SELECT COUNT(*) as running_count FROM celoeapi.log_scheduler WHERE status = 2");
+            $running_query = $this->db->query("SELECT COUNT(*) as running_count FROM celoeapi.shared_log_scheduler WHERE status = 2");
             $is_running = $running_query->row()->running_count > 0;
 
             return [
@@ -928,11 +907,11 @@ class cp_course_performance_etl_model extends CI_Model
     {
         try {
             // Get total count
-            $count_query = $this->db->query("SELECT COUNT(*) as total FROM celoeapi.log_scheduler");
+            $count_query = $this->db->query("SELECT COUNT(*) as total FROM celoeapi.shared_log_scheduler");
             $total = $count_query->row()->total;
 
             // Get logs with pagination
-            $query = $this->db->query("SELECT * FROM celoeapi.log_scheduler ORDER BY id DESC LIMIT ? OFFSET ?", array($limit, $offset));
+            $query = $this->db->query("SELECT * FROM celoeapi.shared_log_scheduler ORDER BY id DESC LIMIT ? OFFSET ?", array($limit, $offset));
             $logs = $query->result();
 
             // Format logs
@@ -986,8 +965,8 @@ class cp_course_performance_etl_model extends CI_Model
             ];
 
             $this->db->query(
-                "INSERT INTO celoeapi.log_scheduler (offset, numrow, status, start_date, end_date) VALUES (?, ?, ?, ?, ?)",
-                array($data['offset'], $data['numrow'], $data['status'], $data['start_date'], $data['end_date'])
+                "INSERT INTO celoeapi.shared_log_scheduler (offset, numrow, status, start_date, end_date, category) VALUES (?, ?, ?, ?, ?, ?)",
+                array($data['offset'], $data['numrow'], $data['status'], $data['start_date'], $data['end_date'], 'etl_course_performance')
             );
             $log_id = $this->db->insert_id();
 
@@ -1005,7 +984,7 @@ class cp_course_performance_etl_model extends CI_Model
         try {
             $end_date = date('Y-m-d H:i:s');
             $this->db->query(
-                "UPDATE celoeapi.log_scheduler SET numrow = ?, status = ?, end_date = ? WHERE id = ?",
+                "UPDATE celoeapi.shared_log_scheduler SET numrow = ?, status = ?, end_date = ? WHERE id = ?",
                 array($total_records, 1, $end_date, $log_id)
             );
 
@@ -1022,7 +1001,7 @@ class cp_course_performance_etl_model extends CI_Model
         try {
             $end_date = date('Y-m-d H:i:s');
             $this->db->query(
-                "UPDATE celoeapi.log_scheduler SET status = ?, end_date = ? WHERE id = ?",
+                "UPDATE celoeapi.shared_log_scheduler SET status = ?, end_date = ? WHERE id = ?",
                 array(3, $end_date, $log_id)
             );
 

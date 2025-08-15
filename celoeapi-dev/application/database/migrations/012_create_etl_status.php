@@ -81,11 +81,11 @@ class Migration_Create_etl_status extends CI_Migration {
         $this->dbforge->add_key('extraction_date');
         $this->dbforge->add_key(['process_name', 'extraction_date'], FALSE, TRUE); // Unique key
         
-        $this->dbforge->create_table('etl_status', TRUE);
+        $this->dbforge->create_table('sas_etl_status', TRUE);
     }
 
     public function down()
     {
-        $this->dbforge->drop_table('etl_status');
+        $this->dbforge->drop_table('sas_etl_status');
     }
 } 
