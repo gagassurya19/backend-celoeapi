@@ -34,26 +34,7 @@ $config['swagger'] = [
     ],
     'security' => [],
     'tags' => [
-        [
-            'name' => 'ETL',
-            'description' => 'Extract, Transform, Load operations'
-        ],
-        [
-            'name' => 'Student Activity Summary',
-            'description' => 'Student activity ETL and analytics'
-        ],
-        [
-            'name' => 'Course Performance ETL',
-            'description' => 'Course Performance ETL (cp_*) including backfill. Backfill processes data from a given start_date up to current date in daily batches, can run concurrently.'
-        ],
-        [
-            'name' => 'Data Export',
-            'description' => 'Data export operations'
-        ],
-        [
-            'name' => 'Analytics',
-            'description' => 'Data analytics and reporting'
-        ]
+        
     ]
 ];
 

@@ -11,11 +11,18 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  * Generate OpenAPI specification
  */
 function generate_swagger_spec() {
-	$CI =& get_instance();
-	
-	// Try to load the config
-	$CI->config->load('swagger', TRUE);
-	$config = $CI->config->item('swagger');
+	// Load config without relying on CI magic properties to satisfy linters
+	$config = [];
+	$config_file = APPPATH . 'config/swagger.php';
+	if (file_exists($config_file)) {
+		// This file defines $config array
+		include $config_file;
+		if (isset($config) && isset($config['swagger'])) {
+			$config = $config['swagger'];
+		} else {
+			$config = [];
+		}
+	}
 	
 	// Set default config if loading fails
 	if (empty($config)) {
@@ -38,16 +45,8 @@ function generate_swagger_spec() {
 				]
 			],
 			'security' => [],
-			'tags' => [
-				[
-					'name' => 'ETL',
-					'description' => 'Extract, Transform, Load operations'
-				],
-				[
-					'name' => 'User Activity',
-					'description' => 'User activity ETL and analytics'
-				]
-			]
+							
+			
 		];
 	}
 	
@@ -197,7 +196,7 @@ function generate_endpoint_from_method($controller_name, $method_name, $content,
 	];
 
 	// Focus tag override for Course Performance endpoints
-	if (stripos($endpoint_path, '/api/etl_cp') === 0) {
+	if (stripos($endpoint_path, '/api/etl_cp') === 0 || stripos($endpoint_path, '/api/etl_cp_export') === 0) {
 		$op['tags'] = ['Course Performance ETL'];
 	}
 
@@ -262,6 +261,11 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 	if ($clean_method_name === 'run_pipeline') {
 		return '/' . $path . '/run_pipeline';
 	}
+
+	// Map etl_cp_export/export to /api/etl_cp/export for nicer public path
+	if (strtolower($controller_name) === 'etl_cp_export' && $clean_method_name === 'export') {
+		return '/api/etl_cp/export';
+	}
 	
 	if ($clean_method_name === 'index') {
 		return '/' . $path;
@@ -279,7 +283,8 @@ function generate_tag_from_controller($controller_name) {
 	
 	$tag_mappings = [
 		'User_activity_etl' => 'User Activity',
-		'Etl_cp' => 'Course Performance ETL'
+		'Etl_cp' => 'Course Performance ETL',
+		'Etl_cp_export' => 'Course Performance ETL'
 	];
 	
 	return isset($tag_mappings[$controller_name]) ? $tag_mappings[$controller_name] : $tag;
@@ -329,7 +334,7 @@ function generate_description($method_name) {
 		'run_pipeline' => 'Start ETL pipeline processing for a specified date range. Supports both automatic date detection and manual date range specification.',
 		'run' => 'Trigger Course Performance ETL (cp_*). If body contains start_date, runs backfill from that date up to the latest date in daily batches (optional concurrency). Otherwise performs a full refresh. Runs in background when called from API.',
 		'backfill' => 'Backfill Course Performance data from the provided start_date up to latest date in daily batches. Designed for large datasets; supports optional concurrency and resource tuning via env.',
-		'export' => 'Export data with optional filtering and pagination.',
+		'export' => 'Export Course Performance data (no date filters) with pagination. Use query params: limit, offset, and optional table/tables to select specific tables.',
 		'status' => 'Get current status and progress information.',
 		'clean_data' => 'Clean existing data for specified parameters.',
 		'list' => 'Retrieve a list of records with pagination support.',
@@ -388,19 +393,28 @@ function generate_parameters($method_name, $content) {
 function analyze_controller_parameters($method_name, $content) {
 	$parameters = [];
 	
-	// Check for date parameter in export methods (query parameter)
-	if (strpos($content, 'date') !== false && strpos($method_name, 'export') !== false) {
+	// Add table selection parameters for export
+	if (strpos($method_name, 'export') !== false) {
 		$parameters[] = [
-			'name' => 'date',
+			'name' => 'table',
 			'in' => 'query',
-			'description' => 'Extraction date (YYYY-MM-DD format)',
+			'description' => 'Single table to export (e.g., cp_student_profile, cp_course_summary, cp_activity_summary, cp_student_quiz_detail, cp_student_assignment_detail, cp_student_resource_access)',
 			'required' => false,
-			'schema' => [
-				'type' => 'string',
-				'format' => 'date',
-				'pattern' => '^\d{4}-\d{2}-\d{2}$',
-				'example' => '2024-01-15'
-			]
+			'schema' => ['type' => 'string']
+		];
+		$parameters[] = [
+			'name' => 'tables',
+			'in' => 'query',
+			'description' => 'Comma-separated list of tables to export',
+			'required' => false,
+			'schema' => ['type' => 'string']
+		];
+		$parameters[] = [
+			'name' => 'debug',
+			'in' => 'query',
+			'description' => 'Include debug information (counts, database)',
+			'required' => false,
+			'schema' => ['type' => 'boolean']
 		];
 	}
 	

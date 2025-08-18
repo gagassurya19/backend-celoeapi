@@ -58,6 +58,9 @@ $route['api/etl_student_activity_summary/run_pipeline']['POST'] = 'api/etl_stude
 $route['api/etl_student_activity_summary/export']['GET'] = 'api/etl_student_activity_summary/export';
 $route['api/etl_student_activity_summary/clean_data']['POST'] = 'api/etl_student_activity_summary/clean_data';
 
+// Course Performance export endpoints (same prefix as etl_cp)
+$route['api/etl_cp/export']['GET'] = 'api/etl_cp_export/export';
+
 // Swagger/OpenAPI Documentation Routes
 $route['swagger'] = 'swagger/index';
 $route['swagger/'] = 'swagger/index';
