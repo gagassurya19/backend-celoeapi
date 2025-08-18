@@ -145,15 +145,33 @@ create_basic_tables() {
     info "Creating basic tables..."
     
     local sql="
-    CREATE TABLE IF NOT EXISTS \`etl_status\` (
-        \`id\` int(11) NOT NULL AUTO_INCREMENT,
-        \`status\` varchar(50) NOT NULL,
-        \`message\` text,
-        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+    CREATE TABLE IF NOT EXISTS \`sas_etl_status\` (
+        \`id\` bigint(20) NOT NULL AUTO_INCREMENT,
+        \`process_name\` varchar(100) NOT NULL,
+        \`status\` varchar(32) NOT NULL,
+        \`start_time\` datetime DEFAULT NULL,
+        \`end_time\` datetime DEFAULT NULL,
+        \`duration_seconds\` int(11) DEFAULT NULL,
+        \`extraction_date\` date DEFAULT NULL,
+        \`parameters\` text,
+        \`created_at\` datetime DEFAULT NULL,
+        \`updated_at\` datetime DEFAULT NULL,
         PRIMARY KEY (\`id\`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    
-    INSERT INTO \`etl_status\` (\`status\`, \`message\`) VALUES ('ready', 'Database initialized');
+
+    CREATE TABLE IF NOT EXISTS \`sas_log_scheduler\` (
+        \`id\` bigint(20) NOT NULL AUTO_INCREMENT,
+        \`batch_name\` varchar(64) DEFAULT NULL,
+        \`offset\` int(10) NOT NULL DEFAULT '0',
+        \`numrow\` int(10) NOT NULL DEFAULT '0',
+        \`status\` tinyint(1) NOT NULL COMMENT '1=finished, 2=inprogress, 3=failed',
+        \`limit_size\` int(10) NOT NULL DEFAULT '1000',
+        \`start_date\` datetime DEFAULT NULL,
+        \`end_date\` datetime DEFAULT NULL,
+        \`error_details\` text DEFAULT NULL,
+        \`created_at\` datetime DEFAULT NULL,
+        PRIMARY KEY (\`id\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     "
     
     if mysql -h "$DB_HOST" -u "$DB_USERNAME" -p"$DB_PASSWORD" --ssl=0 "$DB_NAME" -e "$sql"; then
