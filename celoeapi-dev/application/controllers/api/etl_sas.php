@@ -89,55 +89,6 @@ class etl_sas extends REST_Controller {
 		}
     }
 
-	// GET /api/etl_sas/export - Export ETL data with pagination
-	public function export_get()
-	{
-		try {
-			$this->load->database();
-			$this->load->model('sas_user_activity_etl_model', 'm_user_activity');
-
-			$limit = (int) ($this->input->get('limit') ?: 100);
-			$offset = (int) ($this->input->get('offset') ?: 0);
-			$date = $this->input->get('date');
-			$course_id = $this->input->get('course_id');
-
-			if ($offset < 0) {
-				$this->response([
-					'status' => false,
-					'message' => 'Offset must be 0 or greater'
-				], REST_Controller::HTTP_BAD_REQUEST);
-				return;
-			}
-
-			$data = $this->m_user_activity->get_user_activity_etl($course_id, $date, $limit, $offset);
-			$total_count = (int) $this->m_user_activity->get_user_activity_total_count($course_id, $date);
-
-			$this->response([
-				'status' => true,
-				'data' => $data,
-				'has_next' => (($offset + $limit) < $total_count),
-				'filters' => [
-					'date' => $date,
-					'course_id' => $course_id
-				],
-				'pagination' => [
-					'limit' => (int) $limit,
-					'offset' => (int) $offset,
-					'count' => count($data),
-					'total_count' => (int) $total_count,
-					'has_more' => ($offset + $limit) < $total_count
-				]
-			], REST_Controller::HTTP_OK);
-		} catch (Exception $e) {
-			log_message('error', 'SAS export failed: ' . $e->getMessage());
-			$this->response([
-				'status' => false,
-				'message' => 'Failed to export SAS data',
-				'error' => $e->getMessage()
-			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
-		}
-	}
-
 	// POST /api/etl_sas/clean - Clean ALL SAS ETL data
 	public function clean_data_post()
 	{
@@ -202,6 +153,168 @@ class etl_sas extends REST_Controller {
 		} catch (Exception $e) {
 			log_message('error', 'Failed to start SAS catch-up: ' . $e->getMessage());
 			throw $e;
+		}
+	}
+
+	// GET /api/etl_sas/logs - list SAS ETL logs (latest first)
+	public function logs_get()
+	{
+		try {
+			$this->load->database();
+			$limit = (int) ($this->input->get('limit') ?: 50);
+			$offset = (int) ($this->input->get('offset') ?: 0);
+			$status = $this->input->get('status'); // optional: running/completed/failed
+
+			$this->db->from('sas_etl_logs');
+			$this->db->where('process_name', 'user_activity_etl');
+			if (!empty($status)) {
+				$this->db->where('status', $status);
+			}
+			$this->db->order_by('id', 'DESC');
+			$this->db->limit($limit, $offset);
+			$query = $this->db->get();
+
+			$this->response([
+				'status' => true,
+				'data' => $query->result_array(),
+				'pagination' => [
+					'limit' => $limit,
+					'offset' => $offset
+				]
+			], REST_Controller::HTTP_OK);
+		} catch (Exception $e) {
+			$this->response([
+				'status' => false,
+				'error' => $e->getMessage()
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// GET /api/etl_sas/status - get latest SAS ETL status
+	public function status_get()
+	{
+		try {
+			$this->load->database();
+			
+			// Get latest log entry
+			$this->db->from('sas_etl_logs');
+			$this->db->where('process_name', 'user_activity_etl');
+			$this->db->order_by('id', 'DESC');
+			$this->db->limit(1);
+			$latest_log = $this->db->get()->row_array();
+			
+			if (!$latest_log) {
+				$this->response([
+					'status' => true,
+					'data' => [
+						'last_run' => null,
+						'status' => 'no_data',
+						'message' => 'No ETL runs found'
+					]
+				], REST_Controller::HTTP_OK);
+				return;
+			}
+			
+			// Get running count
+			$this->db->from('sas_etl_logs');
+			$this->db->where('process_name', 'user_activity_etl');
+			$this->db->where('status', 'running');
+			$running_count = $this->db->count_all_results();
+			
+			// Get recent activity (last 7 days)
+			$this->db->from('sas_etl_logs');
+			$this->db->where('process_name', 'user_activity_etl');
+			$this->db->where('start_time >=', date('Y-m-d H:i:s', strtotime('-7 days')));
+			$recent_count = $this->db->count_all_results();
+			
+			// Get watermark data (last extracted and next to extract)
+			$this->db->from('sas_etl_watermarks');
+			$this->db->where('process_name', 'user_activity_etl');
+			$watermark = $this->db->get()->row_array();
+			
+			$watermark_info = null;
+			if ($watermark) {
+				$next_date = date('Y-m-d', strtotime($watermark['last_date'] . ' +1 day'));
+				$watermark_info = [
+					'last_extracted_date' => $watermark['last_date'],
+					'last_extracted_timecreated' => $watermark['last_timecreated'],
+					'next_extract_date' => $next_date,
+					'updated_at' => $watermark['updated_at']
+				];
+			}
+			
+			$this->response([
+				'status' => true,
+				'data' => [
+					'last_run' => [
+						'id' => (int)$latest_log['id'],
+						'start_time' => $latest_log['start_time'],
+						'end_time' => $latest_log['end_time'],
+						'status' => $latest_log['status'],
+						'message' => $latest_log['message'],
+						'parameters' => json_decode($latest_log['parameters'], true),
+						'duration_seconds' => $latest_log['duration_seconds']
+					],
+					'currently_running' => $running_count,
+					'recent_activity' => $recent_count,
+					'watermark' => $watermark_info,
+					'service' => 'SAS'
+				]
+			], REST_Controller::HTTP_OK);
+		} catch (Exception $e) {
+			$this->response([
+				'status' => false,
+				'error' => $e->getMessage()
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// GET /api/etl_sas/export - Export ETL data with pagination
+	public function export_get()
+	{
+		try {
+			$this->load->database();
+			$this->load->model('sas_user_activity_etl_model', 'm_user_activity');
+
+			$limit = (int) ($this->input->get('limit') ?: 100);
+			$offset = (int) ($this->input->get('offset') ?: 0);
+			$date = $this->input->get('date');
+			$course_id = $this->input->get('course_id');
+
+			if ($offset < 0) {
+				$this->response([
+					'status' => false,
+					'message' => 'Offset must be 0 or greater'
+				], REST_Controller::HTTP_BAD_REQUEST);
+				return;
+			}
+
+			$data = $this->m_user_activity->get_user_activity_etl($course_id, $date, $limit, $offset);
+			$total_count = (int) $this->m_user_activity->get_user_activity_total_count($course_id, $date);
+
+			$this->response([
+				'status' => true,
+				'data' => $data,
+				'has_next' => (($offset + $limit) < $total_count),
+				'filters' => [
+					'date' => $date,
+					'course_id' => $course_id
+				],
+				'pagination' => [
+					'limit' => (int) $limit,
+					'offset' => (int) $offset,
+					'count' => count($data),
+					'total_count' => (int) $total_count,
+					'has_more' => ($offset + $limit) < $total_count
+				]
+			], REST_Controller::HTTP_OK);
+		} catch (Exception $e) {
+			log_message('error', 'SAS export failed: ' . $e->getMessage());
+			$this->response([
+				'status' => false,
+				'message' => 'Failed to export SAS data',
+				'error' => $e->getMessage()
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}
 }

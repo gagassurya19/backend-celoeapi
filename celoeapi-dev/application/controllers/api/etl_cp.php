@@ -7,7 +7,7 @@ require APPPATH . 'libraries/Format.php';
 
 class etl_cp extends REST_Controller {
 
-	public function run_pipeline_post()
+	public function run_post()
 	{
 		try {
 			$this->load->database();
@@ -131,6 +131,124 @@ class etl_cp extends REST_Controller {
 				'message' => 'Failed to clean CP data',
 				'error' => $e->getMessage(),
 				'log_id' => $log_id ? (int)$log_id : null
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// GET /api/etl_cp/logs - list CP ETL logs (latest first)
+	public function logs_get()
+	{
+		try {
+			$this->load->database();
+			$limit = (int) ($this->input->get('limit') ?: 50);
+			$offset = (int) ($this->input->get('offset') ?: 0);
+			$status = $this->input->get('status'); // optional: 1 finished, 2 inprogress, 3 failed
+
+			$this->db->from('cp_etl_logs');
+			if (!empty($status)) {
+				$this->db->where('status', (int)$status);
+			}
+			$this->db->order_by('id', 'DESC');
+			$this->db->limit($limit, $offset);
+			$query = $this->db->get();
+
+			$this->response([
+				'status' => true,
+				'data' => $query->result_array(),
+				'pagination' => [
+					'limit' => $limit,
+					'offset' => $offset
+				]
+			], REST_Controller::HTTP_OK);
+		} catch (Exception $e) {
+			$this->response([
+				'status' => false,
+				'error' => $e->getMessage()
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	// GET /api/etl_cp/status - get latest CP ETL status
+	public function status_get()
+	{
+		try {
+			$this->load->database();
+			
+			// Get latest log entry
+			$this->db->from('cp_etl_logs');
+			$this->db->order_by('id', 'DESC');
+			$this->db->limit(1);
+			$latest_log = $this->db->get()->row_array();
+			
+			if (!$latest_log) {
+				$this->response([
+					'status' => true,
+					'data' => [
+						'last_run' => null,
+						'status' => 'no_data',
+						'message' => 'No ETL runs found'
+					]
+				], REST_Controller::HTTP_OK);
+				return;
+			}
+			
+			// Get running count (status = 2 for inprogress)
+			$this->db->from('cp_etl_logs');
+			$this->db->where('status', 2);
+			$running_count = $this->db->count_all_results();
+			
+			// Get recent activity (last 7 days)
+			$this->db->from('cp_etl_logs');
+			$this->db->where('start_date >=', date('Y-m-d H:i:s', strtotime('-7 days')));
+			$recent_count = $this->db->count_all_results();
+			
+			// Get watermark data (last extracted and next to extract)
+			$this->db->from('cp_etl_watermarks');
+			$this->db->where('process_name', 'cp_etl');
+			$watermark = $this->db->get()->row_array();
+			
+			$watermark_info = null;
+			if ($watermark) {
+				$next_date = date('Y-m-d', strtotime($watermark['last_date'] . ' +1 day'));
+				$watermark_info = [
+					'last_extracted_date' => $watermark['last_date'],
+					'last_extracted_timecreated' => $watermark['last_timecreated'],
+					'next_extract_date' => $next_date,
+					'updated_at' => $watermark['updated_at']
+				];
+			}
+			
+			// Map status number to string
+			$status_map = [
+				1 => 'finished',
+				2 => 'inprogress', 
+				3 => 'failed'
+			];
+			
+			$this->response([
+				'status' => true,
+				'data' => [
+					'last_run' => [
+						'id' => (int)$latest_log['id'],
+						'start_date' => $latest_log['start_date'],
+						'end_date' => $latest_log['end_date'],
+						'status' => $status_map[$latest_log['status']] ?? 'unknown',
+						'status_code' => (int)$latest_log['status'],
+						'message' => $latest_log['message'],
+						'type' => $latest_log['type'],
+						'numrow' => (int)$latest_log['numrow'],
+						'duration_seconds' => $latest_log['duration_seconds']
+					],
+					'currently_running' => $running_count,
+					'recent_activity' => $recent_count,
+					'watermark' => $watermark_info,
+					'service' => 'CP'
+				]
+			], REST_Controller::HTTP_OK);
+		} catch (Exception $e) {
+			$this->response([
+				'status' => false,
+				'error' => $e->getMessage()
 			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
 		}
 	}

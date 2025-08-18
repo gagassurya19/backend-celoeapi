@@ -199,6 +199,11 @@ function generate_endpoint_from_method($controller_name, $method_name, $content,
 	if (stripos($endpoint_path, '/api/etl_cp') === 0 || stripos($endpoint_path, '/api/etl_cp_export') === 0) {
 		$op['tags'] = ['Course Performance ETL'];
 	}
+	
+	// Focus tag override for SAS endpoints
+	if (stripos($endpoint_path, '/api/etl_sas') === 0) {
+		$op['tags'] = ['Student Activity Summary ETL'];
+	}
 
 	$paths[$endpoint_path] = [ $http_method => $op ];
 	
@@ -279,6 +284,28 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 		if ($clean_method_name === 'clean_data') {
 			return '/api/etl_sas/clean';
 		}
+		if ($clean_method_name === 'logs') {
+			return '/api/etl_sas/logs';
+		}
+		if ($clean_method_name === 'status') {
+			return '/api/etl_sas/status';
+		}
+	}
+	
+	// Map CP methods to new public paths
+	if (strtolower($controller_name) === 'etl_cp') {
+		if ($clean_method_name === 'run') {
+			return '/api/etl_cp/run';
+		}
+		if ($clean_method_name === 'clean') {
+			return '/api/etl_cp/clean';
+		}
+		if ($clean_method_name === 'logs') {
+			return '/api/etl_cp/logs';
+		}
+		if ($clean_method_name === 'status') {
+			return '/api/etl_cp/status';
+		}
 	}
 	
 	if ($clean_method_name === 'index') {
@@ -321,6 +348,8 @@ function generate_summary($method_name) {
 		'export' => 'Export Data',
 		'status' => 'Get Status',
 		'clean_data' => 'Clean Data',
+		'clean' => 'Clean Data',
+		'logs' => 'Get ETL Logs',
 		'list' => 'List Records',
 		'get' => 'Get Record',
 		'create' => 'Create Record',
@@ -353,6 +382,8 @@ function generate_description($method_name) {
 		'export' => 'Export Course Performance data (no date filters) with pagination. Use query params: limit, offset, and optional table/tables to select specific tables.',
 		'status' => 'Get current status and progress information.',
 		'clean_data' => 'Clean existing data for specified parameters.',
+		'clean' => 'Clean all ETL data for the service.',
+		'logs' => 'Get ETL execution logs with pagination. Optional query parameters: limit, offset, status.',
 		'list' => 'Retrieve a list of records with pagination support.',
 		'get' => 'Retrieve a specific record by identifier.',
 		'create' => 'Create a new record.',

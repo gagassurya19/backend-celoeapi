@@ -58,13 +58,15 @@ $route['translate_uri_dashes'] = FALSE;
 $route['api/etl_sas/run']['POST'] = 'api/etl_sas/run_pipeline';
 $route['api/etl_sas/export']['GET'] = 'api/etl_sas/export';
 $route['api/etl_sas/clean']['POST'] = 'api/etl_sas/clean_data';
+$route['api/etl_sas/logs']['GET'] = 'api/etl_sas/logs';
+$route['api/etl_sas/status']['GET'] = 'api/etl_sas/status';
 
 // Course Performance export endpoints (same prefix as etl_cp)
 $route['api/etl_cp/export']['GET'] = 'api/etl_cp_export/export';
-// New unified CP run endpoint (mirrors SAS design)
-$route['api/etl_cp/run']['POST'] = 'api/etl_cp/run_pipeline';
-// CP clean
+$route['api/etl_cp/run']['POST'] = 'api/etl_cp/run';
 $route['api/etl_cp/clean']['POST'] = 'api/etl_cp/clean';
+$route['api/etl_cp/logs']['GET'] = 'api/etl_cp/logs';
+$route['api/etl_cp/status']['GET'] = 'api/etl_cp/status';
 
 // Swagger/OpenAPI Documentation Routes
 $route['swagger'] = 'swagger/index';
