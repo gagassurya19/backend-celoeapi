@@ -29,6 +29,12 @@ class Migration_Create_log_scheduler extends CI_Migration {
                 'null' => FALSE,
                 'comment' => '1=finished, 2=inprogress, 3=failed'
             ],
+            'limit_size' => [
+                'type' => 'INT',
+                'constraint' => 10,
+                'null' => FALSE,
+                'default' => 1000
+            ],
             'start_date' => [
                 'type' => 'DATETIME',
                 'null' => TRUE

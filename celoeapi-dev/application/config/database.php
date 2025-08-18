@@ -28,12 +28,12 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 |	['pconnect'] TRUE/FALSE - Whether to use a persistent connection
 |	['db_debug'] TRUE/FALSE - Whether database errors should be displayed.
 |	['cache_on'] TRUE/FALSE - Enables/disables query caching
-|	['cachedir'] The path to the folder where cache files should be stored
+|	['cachedir'] The path to the folder where cache should be stored
 |	['char_set'] The character set used in communicating with the database
 |	['dbcollat'] The character collation used in communicating with the database
 |				 NOTE: For MySQL and MySQLi databases, this setting is only used
 | 				 as a backup if your server is running PHP < 5.2.3 or MySQL < 5.0.7
-|				 (and in table creation queries made with DB Forge).
+| (and in table creation queries made with DB Forge).
 | 				 There is an incompatibility in PHP with mysql_real_escape_string() which
 | 				 can make your site vulnerable to SQL injection if you are using a
 | 				 multi-byte character set and are running versions lower than these.
@@ -73,46 +73,103 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $active_group = 'default';
 $query_builder = TRUE;
 
-$db['default'] = array(
-	'dsn'	=> '',
-	'hostname' => 'db',
-	'username' => 'moodleuser',
-	'password' => 'moodlepass',
-	'database' => 'celoeapi',
-	'dbdriver' => 'mysqli',
-	'dbprefix' => '',
-	'pconnect' => FALSE,
-	'db_debug' => (ENVIRONMENT !== 'production'),
-	'cache_on' => FALSE,
-	'cachedir' => '',
-	'char_set' => 'utf8mb4',
-	'dbcollat' => 'utf8mb4_unicode_ci',
-	'swap_pre' => '',
-	'encrypt' => FALSE,
-	'compress' => FALSE,
-	'stricton' => FALSE,
-	'failover' => array(),
-	'save_queries' => TRUE
-);
+// Detect if running inside Docker container or on host machine
+$is_docker = file_exists('/.dockerenv') || (isset($_SERVER['HOSTNAME']) && strpos($_SERVER['HOSTNAME'], 'docker') !== false);
 
-$db['moodle'] = array(
-	'dsn'	=> '',
-	'hostname' => 'db',
-	'username' => 'moodleuser',
-	'password' => 'moodlepass',
-	'database' => 'moodle',
-	'dbdriver' => 'mysqli',
-	'dbprefix' => 'mdl_',
-	'pconnect' => FALSE,
-	'db_debug' => (ENVIRONMENT !== 'production'),
-	'cache_on' => FALSE,
-	'cachedir' => '',
-	'char_set' => 'utf8mb4',
-	'dbcollat' => 'utf8mb4_unicode_ci',
-	'swap_pre' => '',
-	'encrypt' => FALSE,
-	'compress' => FALSE,
-	'stricton' => FALSE,
-	'failover' => array(),
-	'save_queries' => TRUE
-);
+// Database configuration for default database (celoeapi)
+if ($is_docker) {
+    // Running inside Docker container - use internal hostname
+    $db['default'] = array(
+        'dsn'	=> '',
+        'hostname' => 'db',
+        'username' => 'moodleuser',
+        'password' => 'moodlepass',
+        'database' => 'celoeapi',
+        'dbdriver' => 'mysqli',
+        'dbprefix' => '',
+        'pconnect' => FALSE,
+        'db_debug' => (ENVIRONMENT !== 'production'),
+        'cache_on' => FALSE,
+        'cachedir' => '',
+        'char_set' => 'utf8mb4',
+        'dbcollat' => 'utf8mb4_unicode_ci',
+        'swap_pre' => '',
+        'encrypt' => FALSE,
+        'compress' => FALSE,
+        'stricton' => FALSE,
+        'failover' => array(),
+        'save_queries' => TRUE
+    );
+} else {
+    // Running on host machine - use localhost with port 3302
+    $db['default'] = array(
+        'dsn'	=> '',
+        'hostname' => 'localhost:3302',
+        'username' => 'moodleuser',
+        'password' => 'moodlepass',
+        'database' => 'celoeapi',
+        'dbdriver' => 'mysqli',
+        'dbprefix' => '',
+        'pconnect' => FALSE,
+        'db_debug' => (ENVIRONMENT !== 'production'),
+        'cache_on' => FALSE,
+        'cachedir' => '',
+        'char_set' => 'utf8mb4',
+        'dbcollat' => 'utf8mb4_unicode_ci',
+        'swap_pre' => '',
+        'encrypt' => FALSE,
+        'compress' => FALSE,
+        'stricton' => FALSE,
+        'failover' => array(),
+        'save_queries' => TRUE
+    );
+}
+
+// Database configuration for moodle database
+if ($is_docker) {
+    // Running inside Docker container - use internal hostname
+    $db['moodle'] = array(
+        'dsn'	=> '',
+        'hostname' => 'db',
+        'username' => 'moodleuser',
+        'password' => 'moodlepass',
+        'database' => 'moodle',
+        'dbdriver' => 'mysqli',
+        'dbprefix' => 'mdl_',
+        'pconnect' => FALSE,
+        'db_debug' => (ENVIRONMENT !== 'production'),
+        'cache_on' => FALSE,
+        'cachedir' => '',
+        'char_set' => 'utf8mb4',
+        'dbcollat' => 'utf8mb4_unicode_ci',
+        'swap_pre' => '',
+        'encrypt' => FALSE,
+        'compress' => FALSE,
+        'stricton' => FALSE,
+        'failover' => array(),
+        'save_queries' => TRUE
+    );
+} else {
+    // Running on host machine - use localhost with port 3302
+    $db['moodle'] = array(
+        'dsn'	=> '',
+        'hostname' => 'localhost:3302',
+        'username' => 'moodleuser',
+        'password' => 'moodlepass',
+        'database' => 'moodle',
+        'dbdriver' => 'mysqli',
+        'dbprefix' => 'mdl_',
+        'pconnect' => FALSE,
+        'db_debug' => (ENVIRONMENT !== 'production'),
+        'cache_on' => FALSE,
+        'cachedir' => '',
+        'char_set' => 'utf8mb4',
+        'dbcollat' => 'utf8mb4_unicode_ci',
+        'swap_pre' => '',
+        'encrypt' => FALSE,
+        'compress' => FALSE,
+        'stricton' => FALSE,
+        'failover' => array(),
+        'save_queries' => TRUE
+    );
+}

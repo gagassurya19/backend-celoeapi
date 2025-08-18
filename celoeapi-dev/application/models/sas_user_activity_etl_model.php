@@ -263,7 +263,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_raw_logs($limit = 100, $offset = 0, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('raw_log');
+		$this->db->from('cp_raw_log');
 		
 		if ($date) {
 			$this->db->where('extraction_date', $date);
@@ -302,7 +302,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_user_activity_etl($course_id = null, $date = null, $limit = 100, $offset = 0)
 	{
 		$this->db->select('*');
-		$this->db->from('user_activity_etl');
+		$this->db->from('sas_user_activity_etl');
 
 		// Filter records where course_id is not null
 		$this->db->where('course_id IS NOT NULL');
@@ -332,7 +332,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_user_activity_total_count($course_id = null, $date = null)
 	{
 		$this->db->select('COUNT(*) as total');
-		$this->db->from('user_activity_etl');
+		$this->db->from('sas_user_activity_etl');
 
 		// Filter records where course_id is not null
 		$this->db->where('course_id IS NOT NULL');
@@ -471,14 +471,21 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		// Get database names from config
 		$main_db_name = $this->db->database;
-		$moodle_db_config = $this->config->item('moodle', 'database');
 		
-		// Check if moodle config exists and has database name
-		if ($moodle_db_config && isset($moodle_db_config['database'])) {
-			$moodle_db_name = $moodle_db_config['database'];
-		} else {
-			$moodle_db_name = 'moodle'; // Default fallback
+		// Get moodle database config - fix the config access
+		$moodle_db_config = $this->config->item('moodle');
+		if (!$moodle_db_config) {
+			// Fallback to hardcoded values if config not found
+			$moodle_db_config = [
+				'hostname' => 'db',
+				'username' => 'moodleuser',
+				'password' => 'moodlepass',
+				'database' => 'moodle',
+				'dbprefix' => 'mdl_'
+			];
 		}
+		
+		$moodle_db_name = $moodle_db_config['database'] ?: 'moodle';
 		
 		// Fallback if config is not available
 		if (empty($moodle_db_name)) {
@@ -492,6 +499,14 @@ class sas_user_activity_etl_model extends CI_Model {
 		// Debug: Log database names and config
 		log_message('debug', 'Main DB: ' . $main_db_name . ', Moodle DB: ' . $moodle_db_name);
 		log_message('debug', 'Moodle config: ' . json_encode($moodle_db_config));
+		
+		// Check if ETL tables exist before trying to JOIN with them
+		$etl_tables_exist = $this->_check_etl_tables_exist();
+		
+		if (!$etl_tables_exist) {
+			log_message('info', 'ETL tables do not exist yet, returning empty result');
+			return [];
+		}
 		
 		// Use main database for the query with cross-database JOIN
 		$sql = "
@@ -523,8 +538,8 @@ class sas_user_activity_etl_model extends CI_Model {
 				ON c.category = program.id AND program.depth = 2
 			LEFT JOIN `{$moodle_db_name}`.`mdl_course_categories` faculty
 				ON faculty.id = program.parent AND faculty.depth = 1
-			LEFT JOIN `{$main_db_name}`.`activity_counts_etl` ac ON c.id = ac.courseid AND ac.extraction_date = ?
-			LEFT JOIN `{$main_db_name}`.`user_counts_etl` uc ON c.id = uc.courseid AND uc.extraction_date = ?
+			LEFT JOIN `{$main_db_name}`.`sas_activity_counts_etl` ac ON c.id = ac.courseid AND ac.extraction_date = ?
+			LEFT JOIN `{$main_db_name}`.`sas_user_counts_etl` uc ON c.id = uc.courseid AND uc.extraction_date = ?
 			WHERE c.visible = 1 AND c.idnumber IS NOT NULL AND c.idnumber != ''
 		";
 		
@@ -553,15 +568,38 @@ class sas_user_activity_etl_model extends CI_Model {
 	}
 
 	/**
+	 * Check if ETL tables exist
+	 */
+	private function _check_etl_tables_exist()
+	{
+		$required_tables = ['sas_user_activity_etl', 'sas_activity_counts_etl', 'sas_user_counts_etl'];
+		
+		foreach ($required_tables as $table) {
+			if (!$this->db->table_exists($table)) {
+				log_message('info', 'ETL table does not exist: ' . $table);
+				return false;
+			}
+		}
+		
+		return true;
+	}
+
+	/**
 	 * Insert user activity data into ETL table
 	 */
 	public function insert_user_activity_etl($data, $extraction_date = null)
 	{
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
+		// Check if table exists before proceeding
+		if (!$this->db->table_exists('sas_user_activity_etl')) {
+			log_message('error', 'Table sas_user_activity_etl does not exist. Please run migrations first.');
+			return false;
+		}
+		
 		// Clear existing data for this date
 		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('user_activity_etl');
+		$this->db->delete('sas_user_activity_etl');
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -587,7 +625,7 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('user_activity_etl', $etl_data);
+			$this->db->insert('sas_user_activity_etl', $etl_data);
 		}
 		
 		return true;
@@ -600,9 +638,15 @@ class sas_user_activity_etl_model extends CI_Model {
 	{
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
+		// Check if table exists before proceeding
+		if (!$this->db->table_exists('sas_activity_counts_etl')) {
+			log_message('error', 'Table sas_activity_counts_etl does not exist. Please run migrations first.');
+			return false;
+		}
+		
 		// Clear existing data for this date
 		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('activity_counts_etl');
+		$this->db->delete('sas_activity_counts_etl');
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -619,7 +663,7 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('activity_counts_etl', $etl_data);
+			$this->db->insert('sas_activity_counts_etl', $etl_data);
 		}
 		
 		return true;
@@ -632,9 +676,15 @@ class sas_user_activity_etl_model extends CI_Model {
 	{
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
+		// Check if table exists before proceeding
+		if (!$this->db->table_exists('sas_user_counts_etl')) {
+			log_message('error', 'Table sas_user_counts_etl does not exist. Please run migrations first.');
+			return false;
+		}
+		
 		// Clear existing data for this date
 		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('user_counts_etl');
+		$this->db->delete('sas_user_counts_etl');
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -646,7 +696,7 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('user_counts_etl', $etl_data);
+			$this->db->insert('sas_user_counts_etl', $etl_data);
 		}
 		
 		return true;
@@ -658,17 +708,22 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function clear_etl_data($date)
 	{
 		$tables = [
-			'user_activity_etl',
-			'activity_counts_etl',
-			'user_counts_etl'
+			'sas_user_activity_etl',
+			'sas_activity_counts_etl',
+			'sas_user_counts_etl'
 		];
 		
 		$total_affected = 0;
 		
 		foreach ($tables as $table) {
-			$this->db->where('extraction_date', $date);
-			$this->db->delete($table);
-			$total_affected += $this->db->affected_rows();
+			// Check if table exists before trying to delete from it
+			if ($this->db->table_exists($table)) {
+				$this->db->where('extraction_date', $date);
+				$this->db->delete($table);
+				$total_affected += $this->db->affected_rows();
+			} else {
+				log_message('info', 'Table does not exist, skipping: ' . $table);
+			}
 		}
 		
 		return $total_affected;

@@ -182,9 +182,14 @@ class sas_actvity_counts_model extends CI_Model {
     {
         $extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
         
+        // Check if table exists before proceeding
+        if (!$this->db->table_exists('sas_activity_counts_etl')) {
+            log_message('error', 'Table sas_activity_counts_etl does not exist. Please run migrations first.');
+            return false;
+        }
+        
         // Clear existing data for this extraction date first
-        $this->db->where('extraction_date', $extraction_date);
-        $this->db->delete('activity_counts_etl');
+        $this->db->delete('sas_activity_counts_etl', ['extraction_date' => $extraction_date]);
         
         // Insert new data
         foreach ($data as $row) {
@@ -203,7 +208,7 @@ class sas_actvity_counts_model extends CI_Model {
             ];
             
             // Insert new record (no need to check existing since we cleared first)
-            $this->db->insert('activity_counts_etl', $etl_data);
+            $this->db->insert('sas_activity_counts_etl', $etl_data);
         }
         
         return true;
@@ -215,7 +220,7 @@ class sas_actvity_counts_model extends CI_Model {
     public function get_activity_counts_etl($course_id = null, $date = null)
     {
         $this->db->select('*');
-        $this->db->from('activity_counts_etl');
+        $this->db->from('sas_activity_counts_etl');
         
         if ($course_id) {
             $this->db->where('courseid', $course_id);

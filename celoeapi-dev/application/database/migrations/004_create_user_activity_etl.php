@@ -17,7 +17,17 @@ class Migration_Create_user_activity_etl extends CI_Migration {
                 'constraint' => 11,
                 'null' => FALSE
             ),
-            'id_number' => array(
+            'faculty_id' => array(
+                'type' => 'INT',
+                'constraint' => 11,
+                'null' => TRUE
+            ),
+            'program_id' => array(
+                'type' => 'INT',
+                'constraint' => 11,
+                'null' => TRUE
+            ),
+            'subject_id' => array(
                 'type' => 'VARCHAR',
                 'constraint' => 100,
                 'null' => TRUE
@@ -103,11 +113,18 @@ class Migration_Create_user_activity_etl extends CI_Migration {
         ));
 
         $this->dbforge->add_key('id', TRUE);
-        $this->dbforge->create_table('user_activity_etl', TRUE);
+        $this->dbforge->add_key('course_id');
+        $this->dbforge->add_key('faculty_id');
+        $this->dbforge->add_key('program_id');
+        $this->dbforge->add_key('subject_id');
+        $this->dbforge->add_key('extraction_date');
+        $this->dbforge->add_key(['course_id', 'subject_id', 'extraction_date'], FALSE, TRUE); // Unique key
+        
+        $this->dbforge->create_table('sas_user_activity_etl', TRUE);
     }
 
     public function down()
     {
-        $this->dbforge->drop_table('user_activity_etl');
+        $this->dbforge->drop_table('sas_user_activity_etl');
     }
 }

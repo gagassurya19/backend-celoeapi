@@ -25,13 +25,13 @@ $config['etl_log_level'] = 'info';             // Log level for ETL operations
 // Database settings specific to ETL
 $config['etl_source_database'] = 'celoeapi';  // Source database name
 $config['etl_target_tables'] = [
-    'raw_log',
-    'course_activity_summary', 
-    'student_profile',
-    'student_quiz_detail',
-    'student_assignment_detail',
-    'student_resource_access',
-    'course_summary'
+    'cp_raw_log',
+    'cp_course_activity_summary', 
+    'cp_student_profile',
+    'cp_student_quiz_detail',
+    'cp_student_assignment_detail',
+    'cp_student_resource_access',
+    'cp_course_summary'
 ];
 
 // ETL schedule settings (for cron jobs)

@@ -25,7 +25,7 @@ class Cli extends CI_Controller {
             echo "Starting ETL process...\n";
             log_message('info', 'CLI ETL process started');
             
-            $this->load->model('cp_course_performance_etl_model', 'm_ETL');
+            $this->load->model('cp_etl_model', 'm_ETL');
             $result = $this->m_ETL->run_etl();
             
             echo "ETL process completed successfully!\n";
@@ -43,6 +43,47 @@ class Cli extends CI_Controller {
     }
 
     /**
+     * Run Course Performance ETL explicitly via distinct command
+     * Usage: php index.php cli run_cp_etl
+     */
+    public function run_cp_etl($log_id = null)
+    {
+        try {
+            echo "Starting Course Performance (CP) ETL...\n";
+            log_message('info', 'CLI CP ETL started');
+            $this->load->model('cp_etl_model', 'm_cp');
+            $result = $this->m_cp->run_etl($log_id ? intval($log_id) : null);
+            echo "CP ETL completed. Inserted: " . $result['total_inserted'] . ". Log ID: " . $result['log_id'] . "\n";
+            log_message('info', 'CLI CP ETL completed');
+        } catch (Exception $e) {
+            echo "CP ETL failed: " . $e->getMessage() . "\n";
+            log_message('error', 'CLI CP ETL failed: ' . $e->getMessage());
+            exit(1);
+        }
+    }
+
+    /**
+     * Run CP backfill from start_date with optional concurrency
+     * Usage: php index.php cli run_cp_backfill 2025-01-01 4
+     */
+    public function run_cp_backfill($start_date = null, $concurrency = 1, $log_id = null)
+    {
+        try {
+            if (!$start_date) {
+                throw new Exception('start_date (YYYY-MM-DD) is required');
+            }
+            $conc = intval($concurrency ?: 1);
+            echo "Starting CP backfill from $start_date with concurrency=$conc...\n";
+            $this->load->model('cp_etl_model', 'm_cp');
+            $result = $this->m_cp->run_backfill_from_date($start_date, $conc, $log_id ? intval($log_id) : null);
+            echo "CP backfill completed. Days: " . $result['processed_days'] . ", Inserted: " . $result['inserted_total'] . ", Concurrency: " . $result['concurrency'] . "\n";
+        } catch (Exception $e) {
+            echo "CP backfill failed: " . $e->getMessage() . "\n";
+            exit(1);
+        }
+    }
+
+    /**
      * Run incremental ETL process via CLI
      * Usage: php index.php cli run_incremental_etl
      */
@@ -52,8 +93,8 @@ class Cli extends CI_Controller {
             echo "Starting incremental ETL process...\n";
             log_message('info', 'CLI incremental ETL process started');
             
-            $this->load->model('cp_course_performance_etl_model', 'm_ETL');
-            $result = $this->m_ETL->run_etl(true); // true for incremental
+            $this->load->model('cp_etl_model', 'm_ETL');
+            $result = $this->m_ETL->run_etl(); // full refresh until incremental is implemented
             
             echo "Incremental ETL process completed successfully!\n";
             echo "Total records processed: " . $result['total_records'] . "\n";
@@ -527,6 +568,283 @@ class Cli extends CI_Controller {
         $pow = min($pow, count($units) - 1);
         $bytes /= pow(1024, $pow);
         return round($bytes, 2) . ' ' . $units[$pow];
+    }
+
+    public function ensure_cp_tables()
+    {
+        if (!$this->input->is_cli_request()) {
+            show_error('CLI only');
+        }
+        $this->load->database();
+        echo "Ensuring cp_ tables...\n";
+        $sqls = [
+            "CREATE TABLE IF NOT EXISTS `cp_activity_summary` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `course_id` bigint NOT NULL,
+              `section` int DEFAULT NULL,
+              `activity_id` bigint NOT NULL,
+              `activity_type` varchar(50) NOT NULL,
+              `activity_name` varchar(255) NOT NULL,
+              `accessed_count` int DEFAULT '0',
+              `submission_count` int DEFAULT NULL,
+              `graded_count` int DEFAULT NULL,
+              `attempted_count` int DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_course_id` (`course_id`),
+              KEY `idx_activity_type` (`activity_type`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            "CREATE TABLE IF NOT EXISTS `cp_course_summary` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `course_id` bigint NOT NULL,
+              `course_name` varchar(255) NOT NULL,
+              `kelas` varchar(100) DEFAULT NULL,
+              `jumlah_aktivitas` int DEFAULT '0',
+              `jumlah_mahasiswa` int DEFAULT '0',
+              `dosen_pengampu` text,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `course_id` (`course_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            "CREATE TABLE IF NOT EXISTS `cp_etl_logs` (
+              `id` bigint NOT NULL AUTO_INCREMENT,
+              `offset` int NOT NULL DEFAULT '0',
+              `numrow` int NOT NULL DEFAULT '0',
+              `type` varchar(32) NOT NULL DEFAULT 'run_etl',
+              `message` text NULL,
+              `requested_start_date` date NULL,
+              `extracted_start_date` date NULL,
+              `extracted_end_date` date NULL,
+              `status` tinyint(1) NOT NULL COMMENT '1=finished, 2=inprogress, 3=failed',
+              `start_date` datetime DEFAULT NULL,
+              `end_date` datetime DEFAULT NULL,
+              `duration_seconds` int NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_status` (`status`),
+              KEY `idx_start_date` (`start_date`),
+              KEY `idx_end_date` (`end_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            "CREATE TABLE IF NOT EXISTS `cp_student_assignment_detail` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `assignment_id` bigint NOT NULL,
+              `user_id` bigint NOT NULL,
+              `nim` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `waktu_submit` datetime DEFAULT NULL,
+              `waktu_pengerjaan` time DEFAULT NULL,
+              `nilai` decimal(5,2) DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_assignment_id` (`assignment_id`),
+              KEY `idx_user_id` (`user_id`),
+              KEY `idx_nim` (`nim`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            "CREATE TABLE IF NOT EXISTS `cp_student_profile` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `user_id` bigint NOT NULL,
+              `idnumber` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `email` varchar(255) DEFAULT NULL,
+              `program_studi` varchar(255) DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `user_id` (`user_id`),
+              KEY `idx_idnumber` (`idnumber`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            "CREATE TABLE IF NOT EXISTS `cp_student_quiz_detail` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `quiz_id` bigint NOT NULL,
+              `user_id` bigint NOT NULL,
+              `nim` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `waktu_mulai` datetime DEFAULT NULL,
+              `waktu_selesai` datetime DEFAULT NULL,
+              `durasi_waktu` time DEFAULT NULL,
+              `jumlah_soal` int DEFAULT NULL,
+              `jumlah_dikerjakan` int DEFAULT NULL,
+              `nilai` decimal(5,2) DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_quiz_id` (`quiz_id`),
+              KEY `idx_user_id` (`user_id`),
+              KEY `idx_nim` (`nim`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            "CREATE TABLE IF NOT EXISTS `cp_student_resource_access` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `resource_id` bigint NOT NULL,
+              `user_id` bigint NOT NULL,
+              `nim` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `waktu_akses` datetime DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_resource_id` (`resource_id`),
+              KEY `idx_user_id` (`user_id`),
+              KEY `idx_nim` (`nim`),
+              KEY `idx_waktu_akses` (`waktu_akses`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+        ];
+        foreach ($sqls as $sql) {
+            $this->db->query($sql);
+        }
+        echo "cp_ tables ensured.\n";
+    }
+
+    /**
+     * Drop and recreate all CP tables to match exact required schema
+     * Usage: php index.php cli reset_cp_schema
+     */
+    public function reset_cp_schema()
+    {
+        if (!$this->input->is_cli_request()) {
+            show_error('CLI only');
+        }
+        $this->load->database();
+        echo "Resetting CP schema (drop + recreate) ...\n";
+
+        $drops = [
+            'cp_activity_summary',
+            'cp_course_summary',
+            'cp_etl_logs',
+            'cp_student_assignment_detail',
+            'cp_student_profile',
+            'cp_student_quiz_detail',
+            'cp_student_resource_access',
+            // legacy leftovers
+            'cp_course_activity_summary',
+            'cp_raw_log',
+        ];
+        foreach ($drops as $tbl) {
+            $this->db->query("DROP TABLE IF EXISTS `$tbl`");
+        }
+
+        $creates = [
+            // Exact schemas per requirement
+            "CREATE TABLE `cp_activity_summary` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `course_id` bigint NOT NULL,
+              `section` int DEFAULT NULL,
+              `activity_id` bigint NOT NULL,
+              `activity_type` varchar(50) NOT NULL,
+              `activity_name` varchar(255) NOT NULL,
+              `accessed_count` int DEFAULT '0',
+              `submission_count` int DEFAULT NULL,
+              `graded_count` int DEFAULT NULL,
+              `attempted_count` int DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_course_id` (`course_id`),
+              KEY `idx_activity_type` (`activity_type`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE `cp_course_summary` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `course_id` bigint NOT NULL,
+              `course_name` varchar(255) NOT NULL,
+              `kelas` varchar(100) DEFAULT NULL,
+              `jumlah_aktivitas` int DEFAULT '0',
+              `jumlah_mahasiswa` int DEFAULT '0',
+              `dosen_pengampu` text,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `course_id` (`course_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE `cp_etl_logs` (
+              `id` bigint NOT NULL AUTO_INCREMENT,
+              `offset` int NOT NULL DEFAULT '0',
+              `numrow` int NOT NULL DEFAULT '0',
+              `type` varchar(32) NOT NULL DEFAULT 'run_etl',
+              `message` text NULL,
+              `requested_start_date` date NULL,
+              `extracted_start_date` date NULL,
+              `extracted_end_date` date NULL,
+              `status` tinyint(1) NOT NULL COMMENT '1=finished, 2=inprogress, 3=failed',
+              `start_date` datetime DEFAULT NULL,
+              `end_date` datetime DEFAULT NULL,
+              `duration_seconds` int NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_status` (`status`),
+              KEY `idx_start_date` (`start_date`),
+              KEY `idx_end_date` (`end_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE `cp_student_assignment_detail` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `assignment_id` bigint NOT NULL,
+              `user_id` bigint NOT NULL,
+              `nim` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `waktu_submit` datetime DEFAULT NULL,
+              `waktu_pengerjaan` time DEFAULT NULL,
+              `nilai` decimal(5,2) DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_assignment_id` (`assignment_id`),
+              KEY `idx_user_id` (`user_id`),
+              KEY `idx_nim` (`nim`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE `cp_student_profile` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `user_id` bigint NOT NULL,
+              `idnumber` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `email` varchar(255) DEFAULT NULL,
+              `program_studi` varchar(255) DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `user_id` (`user_id`),
+              KEY `idx_idnumber` (`idnumber`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE `cp_student_quiz_detail` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `quiz_id` bigint NOT NULL,
+              `user_id` bigint NOT NULL,
+              `nim` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `waktu_mulai` datetime DEFAULT NULL,
+              `waktu_selesai` datetime DEFAULT NULL,
+              `durasi_waktu` time DEFAULT NULL,
+              `jumlah_soal` int DEFAULT NULL,
+              `jumlah_dikerjakan` int DEFAULT NULL,
+              `nilai` decimal(5,2) DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_quiz_id` (`quiz_id`),
+              KEY `idx_user_id` (`user_id`),
+              KEY `idx_nim` (`nim`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE `cp_student_resource_access` (
+              `id` int NOT NULL AUTO_INCREMENT,
+              `resource_id` bigint NOT NULL,
+              `user_id` bigint NOT NULL,
+              `nim` varchar(255) DEFAULT NULL,
+              `full_name` varchar(255) NOT NULL,
+              `waktu_akses` datetime DEFAULT NULL,
+              `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              KEY `idx_resource_id` (`resource_id`),
+              KEY `idx_user_id` (`user_id`),
+              KEY `idx_nim` (`nim`),
+              KEY `idx_waktu_akses` (`waktu_akses`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+        ];
+
+        foreach ($creates as $sql) {
+            $this->db->query($sql);
+        }
+        echo "CP schema has been reset to exact specification.\n";
     }
 
 } 
