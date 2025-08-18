@@ -1,7 +1,7 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class cp_etl_model extends CI_Model
+class Cp_etl_model extends CI_Model
 {
     const DEFAULT_MEMORY_LIMIT_MB = 1024;
     const DEFAULT_MAX_EXECUTION_SECONDS = 7200;
@@ -46,6 +46,28 @@ class cp_etl_model extends CI_Model
             $this->db->simple_query("SET SESSION wait_timeout = 28800");
             $this->db->simple_query("SET SESSION interactive_timeout = 28800");
         }
+    }
+
+    // === Watermark helpers (CP) ===
+    public function get_watermark_date($process_name = 'cp_etl')
+    {
+        $exists = $this->db->query("SHOW TABLES LIKE 'cp_etl_watermarks'")->num_rows() > 0;
+        if (!$exists) {
+            return null;
+        }
+        $row = $this->db->get_where('cp_etl_watermarks', ['process_name' => $process_name])->row_array();
+        return $row && isset($row['last_date']) ? $row['last_date'] : null;
+    }
+
+    public function update_watermark_date($date, $timestamp = null, $process_name = 'cp_etl')
+    {
+        $exists = $this->db->query("SHOW TABLES LIKE 'cp_etl_watermarks'")->num_rows() > 0;
+        if (!$exists) {
+            return false;
+        }
+        $sql = "INSERT INTO cp_etl_watermarks(process_name,last_date,last_timecreated,updated_at) VALUES(?,?,?,NOW())
+                ON DUPLICATE KEY UPDATE last_date=VALUES(last_date), last_timecreated=VALUES(last_timecreated), updated_at=NOW()";
+        return $this->db->query($sql, [$process_name, $date, $timestamp]);
     }
 
     private function create_log($status = 2, $type = 'run_etl', $requestedStartDate = null)
@@ -158,6 +180,12 @@ class cp_etl_model extends CI_Model
             $this->mark_inprogress($logId);
         }
 
+        // Shift startDate forward based on watermark if available
+        $wmDate = $this->get_watermark_date('cp_etl');
+        if ($wmDate && strtotime($wmDate) >= strtotime($startDate)) {
+            $startDate = date('Y-m-d', strtotime($wmDate . ' +1 day'));
+        }
+
         $startTs = strtotime($startDate);
         $endTs = strtotime(date('Y-m-d')); // up to today (exclusive)
         if ($startTs === false || $startTs > $endTs) {
@@ -188,6 +216,8 @@ class cp_etl_model extends CI_Model
                 if ($pid == -1) {
                     // Fork failed, fallback to sequential
                     $insertedTotal += $this->process_single_date($date);
+                    // Update watermark after sequential fallback success
+                    $this->update_watermark_date($date, strtotime($date . ' 23:59:59'), 'cp_etl');
                 } elseif ($pid) {
                     // Parent
                     $activeChildren[$pid] = true;
@@ -208,11 +238,18 @@ class cp_etl_model extends CI_Model
                 $pid = pcntl_wait($status);
                 if ($pid > 0) unset($activeChildren[$pid]);
             }
+            // Best-effort watermark: set to last scheduled date
+            if (!empty($dates)) {
+                $last = end($dates);
+                $this->update_watermark_date($last, strtotime($last . ' 23:59:59'), 'cp_etl');
+            }
         } else {
             // Sequential
             foreach ($dates as $date) {
                 $this->ensureDbConnection();
                 $insertedTotal += $this->process_single_date($date);
+                // Update watermark after each successful day
+                $this->update_watermark_date($date, strtotime($date . ' 23:59:59'), 'cp_etl');
             }
         }
 

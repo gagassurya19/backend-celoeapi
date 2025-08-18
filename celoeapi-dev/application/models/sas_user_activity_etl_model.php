@@ -202,15 +202,20 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function clear_all_etl_data()
 	{
 		$tables = [
+			// Truncate child first to satisfy FK
 			'sas_user_activity_etl',
 			'sas_activity_counts_etl',
-			'sas_user_counts_etl'
+			'sas_user_counts_etl',
+			'sas_courses',
+			'sas_etl_watermarks',
 		];
 		
 		$summary = [
 			'tables' => [],
 			'total_affected' => 0
 		];
+		// Temporarily disable FK checks to allow TRUNCATE on parent tables
+		$this->db->query('SET FOREIGN_KEY_CHECKS=0');
 		
 		foreach ($tables as $table) {
 			if ($this->db->table_exists($table)) {
@@ -230,6 +235,9 @@ class sas_user_activity_etl_model extends CI_Model {
 				log_message('info', 'Table does not exist, skipping: ' . $table);
 			}
 		}
+		
+		// Re-enable FK checks
+		$this->db->query('SET FOREIGN_KEY_CHECKS=1');
 		
 		return $summary;
 	}

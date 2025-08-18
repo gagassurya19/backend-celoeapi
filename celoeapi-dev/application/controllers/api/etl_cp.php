@@ -41,6 +41,7 @@ class etl_cp extends REST_Controller {
 			$php = 'php';
 			$index = APPPATH . '../index.php';
 			$cmd = $php . ' ' . $index . ' cli run_cp_backfill ' . escapeshellarg($start_date) . ' ' . $concurrency . ' ' . (int)$log_id . ' > /dev/null 2>&1 &';
+			log_message('info', 'Spawned CP backfill: ' . $cmd);
 			exec($cmd);
 
 			$this->response([
@@ -73,6 +74,7 @@ class etl_cp extends REST_Controller {
 				'cp_student_profile',
 				'cp_student_quiz_detail',
 				'cp_student_resource_access',
+				'cp_etl_watermarks',
 			];
 
 			// Log start (inprogress=2)
