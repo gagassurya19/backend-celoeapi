@@ -137,10 +137,10 @@ CREATE INDEX IF NOT EXISTS idx_course_summary_jumlah_mahasiswa
 
 -- Log scheduler optimizations
 CREATE INDEX IF NOT EXISTS idx_log_scheduler_status_start 
-    ON celoeapi.log_scheduler(status, start_date DESC);
+    ON celoeapi.sas_log_scheduler(status, start_date DESC);
 
 CREATE INDEX IF NOT EXISTS idx_log_scheduler_end_date 
-    ON celoeapi.log_scheduler(end_date DESC);
+    ON celoeapi.sas_log_scheduler(end_date DESC);
 
 -- ==================================================================
 -- PARTITIONING FOR LARGE TABLES (Optional - for very large datasets)

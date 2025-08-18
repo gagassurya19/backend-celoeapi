@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS `course_summary` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 8. Log Scheduler Table (for tracking ETL runs)
-CREATE TABLE IF NOT EXISTS `log_scheduler` (
+CREATE TABLE IF NOT EXISTS `sas_log_scheduler` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `offset` int(10) NOT NULL DEFAULT 0,
   `numrow` int(10) NOT NULL DEFAULT 0,
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS `log_scheduler` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 9. ETL Status Table (optional - for additional tracking)
-CREATE TABLE IF NOT EXISTS `etl_status` (
+CREATE TABLE IF NOT EXISTS `sas_etl_status` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `etl_name` varchar(100) NOT NULL,
   `status` enum('running','completed','failed') NOT NULL,

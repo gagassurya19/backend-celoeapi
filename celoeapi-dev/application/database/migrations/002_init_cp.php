@@ -1,12 +1,12 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-class Migration_Create_cp_tables extends CI_Migration {
+class Migration_Init_cp extends CI_Migration {
 
     public function up()
     {
+        // Create CP tables via raw SQL for exact schema
         $queries = [
-            // cp_activity_summary
             "CREATE TABLE IF NOT EXISTS `cp_activity_summary` (
               `id` int NOT NULL AUTO_INCREMENT,
               `course_id` bigint NOT NULL,
@@ -25,7 +25,6 @@ class Migration_Create_cp_tables extends CI_Migration {
               KEY `idx_activity_type` (`activity_type`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // cp_course_summary
             "CREATE TABLE IF NOT EXISTS `cp_course_summary` (
               `id` int NOT NULL AUTO_INCREMENT,
               `course_id` bigint NOT NULL,
@@ -40,7 +39,6 @@ class Migration_Create_cp_tables extends CI_Migration {
               UNIQUE KEY `course_id` (`course_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // cp_etl_logs
             "CREATE TABLE IF NOT EXISTS `cp_etl_logs` (
               `id` bigint NOT NULL AUTO_INCREMENT,
               `offset` int NOT NULL DEFAULT '0',
@@ -61,7 +59,6 @@ class Migration_Create_cp_tables extends CI_Migration {
               KEY `idx_end_date` (`end_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // cp_student_assignment_detail
             "CREATE TABLE IF NOT EXISTS `cp_student_assignment_detail` (
               `id` int NOT NULL AUTO_INCREMENT,
               `assignment_id` bigint NOT NULL,
@@ -78,7 +75,6 @@ class Migration_Create_cp_tables extends CI_Migration {
               KEY `idx_nim` (`nim`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // cp_student_profile
             "CREATE TABLE IF NOT EXISTS `cp_student_profile` (
               `id` int NOT NULL AUTO_INCREMENT,
               `user_id` bigint NOT NULL,
@@ -93,7 +89,6 @@ class Migration_Create_cp_tables extends CI_Migration {
               KEY `idx_idnumber` (`idnumber`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // cp_student_quiz_detail
             "CREATE TABLE IF NOT EXISTS `cp_student_quiz_detail` (
               `id` int NOT NULL AUTO_INCREMENT,
               `quiz_id` bigint NOT NULL,
@@ -113,7 +108,6 @@ class Migration_Create_cp_tables extends CI_Migration {
               KEY `idx_nim` (`nim`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // cp_student_resource_access
             "CREATE TABLE IF NOT EXISTS `cp_student_resource_access` (
               `id` int NOT NULL AUTO_INCREMENT,
               `resource_id` bigint NOT NULL,
@@ -127,7 +121,7 @@ class Migration_Create_cp_tables extends CI_Migration {
               KEY `idx_user_id` (`user_id`),
               KEY `idx_nim` (`nim`),
               KEY `idx_waktu_akses` (`waktu_akses`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;",
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
         ];
 
         foreach ($queries as $sql) {
@@ -146,9 +140,8 @@ class Migration_Create_cp_tables extends CI_Migration {
             'cp_student_quiz_detail',
             'cp_student_resource_access',
         ];
-
-        foreach ($tables as $table) {
-            $this->db->query("DROP TABLE IF EXISTS `$table`");
+        foreach ($tables as $tbl) {
+            $this->db->query("DROP TABLE IF EXISTS `$tbl`");
         }
     }
 }

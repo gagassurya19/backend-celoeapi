@@ -13,8 +13,18 @@ class Migrate extends CI_Controller {
 			return;
 		}
 		
-		$this->load->library('migration');
+		// Load migration config first so the library picks up custom path
 		$this->load->config('migration');
+
+		// Pass config explicitly to the library so _migration_path is set correctly
+		$this->load->library('migration', [
+			'migration_enabled' => $this->config->item('migration_enabled'),
+			'migration_type' => $this->config->item('migration_type'),
+			'migration_path' => $this->config->item('migration_path'),
+			'migration_version' => $this->config->item('migration_version'),
+			'migration_table' => $this->config->item('migration_table'),
+			'migration_auto_latest' => $this->config->item('migration_auto_latest'),
+		]);
 	}
 	
 	private function is_cli_request()
@@ -37,9 +47,8 @@ class Migrate extends CI_Controller {
 				echo "Migration failed: " . $this->migration->error_string() . "\n";
 				exit(1);
 			} else {
-				$new_version = $this->migration->current();
 				echo "Migration completed successfully!\n";
-				echo "Updated to version: " . str_pad($new_version, 3, '0', STR_PAD_LEFT) . "\n";
+				echo "Updated to version: " . str_pad($target_version, 3, '0', STR_PAD_LEFT) . "\n";
 			}
 		} else {
 			// Run to latest version

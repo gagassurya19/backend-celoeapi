@@ -53,6 +53,15 @@ class etl_student_activity_summary extends REST_Controller {
             log_message('info', 'JSON data: ' . json_encode($json_data));
             log_message('info', 'Date range: ' . $start_date . ' to ' . $end_date);
             
+            // Log ETL trigger into SAS logs
+            if (method_exists($this->m_user_activity, 'update_etl_status')) {
+                $this->m_user_activity->update_etl_status('running', null, [
+                    'trigger' => 'api_run_pipeline',
+                    'start_date' => $start_date,
+                    'end_date' => $end_date,
+                ]);
+            }
+
             // Start ETL process in background with date range
             $this->_run_etl_background_range($start_date, $end_date);
             

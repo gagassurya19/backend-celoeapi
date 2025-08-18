@@ -206,7 +206,7 @@ class Cli extends CI_Controller {
                 log_message('error', "User Counts ETL error for date $date: " . $e->getMessage());
             }
             
-            // Step 3: Main ETL - join data into user_activity_etl
+            // Step 3: Main ETL - join data into sas_user_activity_etl
             echo "🔗 Step 3: Processing Main ETL...\n";
             try {
                 $user_activity_data = $this->m_user_activity->get_user_activity_data_paginated(null, $date);
@@ -273,7 +273,7 @@ class Cli extends CI_Controller {
             $this->load->model('sas_user_counts_model', 'm_user_counts');
             
             // Get the last processed date directly from database
-            $query = $this->db->query("SELECT MAX(extraction_date) as last_processed FROM user_activity_etl");
+            $query = $this->db->query("SELECT MAX(extraction_date) as last_processed FROM sas_user_activity_etl");
             $result = $query->row();
             $last_processed_date = $result ? $result->last_processed : null;
             
@@ -521,7 +521,7 @@ class Cli extends CI_Controller {
             log_message('error', "User Counts ETL error for date $date: " . $e->getMessage());
         }
         
-        // Step 3: Main ETL - join data into user_activity_etl
+        // Step 3: Main ETL - join data into sas_user_activity_etl
         echo "  🔗 Step 3: Processing Main ETL...\n";
         try {
             $user_activity_data = $this->m_user_activity->get_user_activity_data_paginated(null, $date);

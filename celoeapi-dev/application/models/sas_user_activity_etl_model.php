@@ -14,8 +14,17 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_etl_status()
 	{
+		// If status table is not present, return default
+		if (!$this->db->table_exists('sas_etl_logs')) {
+			return [
+				'isRunning' => false,
+				'lastRun' => null,
+				'lastStatus' => 'never_run',
+				'currentStatus' => null,
+			];
+		}
 		$this->db->select('*');
-		$this->db->from('etl_status');
+		$this->db->from('sas_etl_logs');
 		$this->db->where('process_name', 'user_activity_etl');
 		$this->db->order_by('created_at', 'DESC');
 		$this->db->limit(1);
@@ -49,6 +58,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		$data = [
 			'process_name' => 'user_activity_etl',
 			'status' => $status,
+			'message' => is_array($parameters) && isset($parameters['message']) ? $parameters['message'] : null,
 			'start_time' => date('Y-m-d H:i:s'),
 			'extraction_date' => $extraction_date ?: date('Y-m-d', strtotime('-1 day')),
 			'parameters' => $parameters ? json_encode($parameters) : null,
@@ -61,7 +71,10 @@ class sas_user_activity_etl_model extends CI_Model {
 			$data['duration_seconds'] = time() - strtotime($data['start_time']);
 		}
 		
-		return $this->db->insert('etl_status', $data);
+		if ($this->db->table_exists('sas_etl_logs')) {
+			return $this->db->insert('sas_etl_logs', $data);
+		}
+		return false;
 	}
 
 	/**
@@ -70,7 +83,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function export_data($limit = 100, $offset = 0, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('user_activity_etl');
+		$this->db->from('sas_user_activity_etl');
 		
 		if ($date) {
 			$this->db->where('extraction_date', $date);
@@ -88,8 +101,11 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_etl_logs($limit = 50, $offset = 0)
 	{
+		if (!$this->db->table_exists('sas_etl_logs')) {
+			return [];
+		}
 		$this->db->select('*');
-		$this->db->from('etl_status');
+		$this->db->from('sas_etl_logs');
 		$this->db->where('process_name', 'user_activity_etl');
 		$this->db->order_by('created_at', 'DESC');
 		$this->db->limit($limit, $offset);
@@ -104,7 +120,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function clear_data($date)
 	{
 		$this->db->where('extraction_date', $date);
-		$this->db->delete('user_activity_etl');
+		$this->db->delete('sas_user_activity_etl');
 		
 		return $this->db->affected_rows();
 	}
@@ -115,7 +131,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_activity_counts($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('activity_counts_etl');
+		$this->db->from('sas_activity_counts_etl');
 		$this->db->where('courseid', $course_id);
 		
 		if ($date) {
@@ -135,7 +151,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_user_counts($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('user_counts_etl');
+		$this->db->from('sas_user_counts_etl');
 		$this->db->where('courseid', $course_id);
 		
 		if ($date) {
@@ -155,7 +171,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_course_summary($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('course_summary');
+		$this->db->from('sas_course_summary');
 		$this->db->where('course_id', $course_id);
 		
 		if ($date) {
@@ -175,7 +191,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_profiles($limit = 100, $offset = 0, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_profile');
+		$this->db->from('sas_student_profile');
 		
 		if ($date) {
 			$this->db->where('extraction_date', $date);
@@ -194,7 +210,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_quiz_details($user_id, $course_id = null, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_quiz_detail');
+		$this->db->from('sas_student_quiz_detail');
 		$this->db->where('user_id', $user_id);
 		
 		if ($course_id) {
@@ -217,7 +233,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_assignment_details($user_id, $course_id = null, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_assignment_detail');
+		$this->db->from('sas_student_assignment_detail');
 		$this->db->where('user_id', $user_id);
 		
 		if ($course_id) {
@@ -240,7 +256,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_student_resource_access($user_id, $course_id = null, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('student_resource_access');
+		$this->db->from('sas_student_resource_access');
 		$this->db->where('user_id', $user_id);
 		
 		if ($course_id) {
@@ -263,7 +279,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_raw_logs($limit = 100, $offset = 0, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('cp_raw_log');
+		$this->db->from('sas_raw_log');
 		
 		if ($date) {
 			$this->db->where('extraction_date', $date);
@@ -282,7 +298,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	public function get_course_activity_summary($course_id, $date = null)
 	{
 		$this->db->select('*');
-		$this->db->from('course_activity_summary');
+		$this->db->from('sas_course_activity_summary');
 		$this->db->where('course_id', $course_id);
 		
 		if ($date) {
@@ -734,6 +750,13 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function execute_scheduler_flow()
 	{
+		// If scheduler table is not present, skip flow gracefully
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return [
+				'status' => 'skipped',
+				'message' => 'sas_log_scheduler table not found; scheduler flow disabled',
+			];
+		}
 		try {
 			// Step 1: Get Scheduler Data for Extraction
 			$scheduler_data = $this->get_scheduler_data_for_extraction();
@@ -779,7 +802,7 @@ class sas_user_activity_etl_model extends CI_Model {
 			// Update scheduler status to failed
 			if (isset($scheduler_data['id'])) {
 				$this->db->where('id', $scheduler_data['id']);
-				$this->db->update('log_scheduler', [
+				$this->db->update('sas_log_scheduler', [
 					'status' => 3, // Failed
 				]);
 			}
@@ -793,8 +816,11 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_scheduler_data_for_extraction()
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return [];
+		}
 		$this->db->select('*');
-		$this->db->from('log_scheduler');
+		$this->db->from('sas_log_scheduler');
 		$this->db->order_by('id', 'DESC');
 		$this->db->limit(1);
 		
@@ -815,6 +841,9 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function set_first_date_extraction()
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return false;
+		}
 		$current_date = date('Y-m-d');
 		$yesterday = date('Y-m-d', strtotime('-1 day'));
 		
@@ -830,7 +859,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		];
 		
 		log_message('info', 'First date extraction initialized for user_activity batch');
-		return $this->db->insert('log_scheduler', $data);
+		return $this->db->insert('sas_log_scheduler', $data);
 	}
 
 	/**
@@ -875,8 +904,11 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	private function get_latest_scheduler_id()
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return null;
+		}
 		$this->db->select('id');
-		$this->db->from('log_scheduler');
+		$this->db->from('sas_log_scheduler');
 		$this->db->order_by('id', 'DESC');
 		$this->db->limit(1);
 		
@@ -890,6 +922,9 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function update_scheduler_status_finished($extraction_date = null)
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return true;
+		}
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
 		// Get latest scheduler record
@@ -897,7 +932,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		if ($scheduler_id) {
 			$this->db->where('id', $scheduler_id);
-			$this->db->update('log_scheduler', [
+			$this->db->update('sas_log_scheduler', [
 				'status' => 1, // Finished (completed)
 				'end_date' => date('Y-m-d H:i:s'),
 			]);
@@ -915,6 +950,9 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function create_scheduler_record($extraction_date = null)
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return false;
+		}
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
 		$data = [
@@ -928,7 +966,7 @@ class sas_user_activity_etl_model extends CI_Model {
 			'created_at' => date('Y-m-d H:i:s')
 		];
 		
-		$result = $this->db->insert('log_scheduler', $data);
+		$result = $this->db->insert('sas_log_scheduler', $data);
 		
 		if ($result) {
 			log_message('info', 'New scheduler record created for user_activity batch with date: ' . $extraction_date);
@@ -942,6 +980,9 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function update_scheduler_status_inprogress($extraction_date = null)
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return true;
+		}
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
 		// Create new scheduler record if none exists
@@ -953,7 +994,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		if ($scheduler_id) {
 			$this->db->where('id', $scheduler_id);
-			$this->db->update('log_scheduler', [
+			$this->db->update('sas_log_scheduler', [
 				'status' => 2, // Inprogress (running)
 				'start_date' => date('Y-m-d H:i:s'),
 			]);
@@ -971,6 +1012,9 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function update_scheduler_status_failed($extraction_date = null, $error_message = null)
 	{
+		if (!$this->db->table_exists('sas_log_scheduler')) {
+			return true;
+		}
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
 		// Get latest scheduler record
@@ -978,7 +1022,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		if ($scheduler_id) {
 			$this->db->where('id', $scheduler_id);
-			$this->db->update('log_scheduler', [
+			$this->db->update('sas_log_scheduler', [
 				'status' => 3, // Failed
 				'end_date' => date('Y-m-d H:i:s'),
 			]);

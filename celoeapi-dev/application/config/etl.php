@@ -42,5 +42,5 @@ $config['etl_schedule'] = [
 ];
 
 // ETL status tracking
-$config['etl_status_table'] = 'etl_status';   // Table to track ETL runs
+$config['etl_status_table'] = 'sas_etl_status';   // Table to track ETL runs
 $config['etl_max_runtime'] = 1800;            // Maximum runtime in seconds (30 minutes)
