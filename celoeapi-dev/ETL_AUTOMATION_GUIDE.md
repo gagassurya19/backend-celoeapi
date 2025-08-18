@@ -31,7 +31,7 @@ php index.php cli run_student_activity_etl_auto
 
 ### 4. **API Endpoint dengan Date Range** (Baru)
 ```bash
-POST /api/etl_student_activity_summary/run_pipeline
+POST /api/etl_sas/run_pipeline
 {
   "start_date": "2025-08-10",  # Optional, defaults to 7 days ago
   "end_date": "2025-08-15"     # Optional, defaults to yesterday
@@ -153,7 +153,7 @@ SELECT * FROM scheduler_status ORDER BY date DESC LIMIT 10;
 php test_etl_range_api.php
 
 # Test manual
-curl -X POST http://localhost:8081/api/etl_student_activity_summary/run_pipeline \
+curl -X POST http://localhost:8081/api/etl_sas/run_pipeline \
   -H "Content-Type: application/json" \
   -d '{"start_date": "2025-08-10", "end_date": "2025-08-15"}'
 ```

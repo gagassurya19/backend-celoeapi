@@ -134,7 +134,8 @@ class Cli extends CI_Controller {
             $start_time = microtime(true);
             $start_memory = memory_get_usage();
             
-            // Update scheduler status to inprogress (2)
+            // Do not log per-day here; top-level run handles per-run log
+            $log_id = null;
             $this->m_user_activity->update_scheduler_status_inprogress($date);
             
             $current_date = date('Y-m-d', strtotime('+1 day'));
@@ -225,8 +226,9 @@ class Cli extends CI_Controller {
                 log_message('error', "Main ETL error for date $date: " . $e->getMessage());
             }
             
-            // Update scheduler status to finished (1)
+            // Update scheduler status to finished (1) and log completion to SAS logs
             $this->m_user_activity->update_scheduler_status_finished($date);
+            // No per-day finish log
             
             $end_time = microtime(true);
             $duration = round($end_time - $start_time, 2);
@@ -249,11 +251,158 @@ class Cli extends CI_Controller {
             // Update scheduler status to failed (3)
             if (isset($date)) {
                 $this->m_user_activity->update_scheduler_status_failed($date, $e->getMessage());
+                // No per-day failed log
             }
             echo "Student Activity Summary ETL process failed for date $date: " . $e->getMessage() . "\n";
             log_message('error', 'CLI Student Activity Summary ETL process failed for date ' . $date . ': ' . $e->getMessage());
             exit(1);
         }
+    }
+
+    /**
+     * Run SAS ETL from a start date to catch up to yesterday with concurrency
+     * Usage: php index.php cli run_student_activity_from_start 2024-01-01 2
+     */
+    public function run_student_activity_from_start($start_date = null, $concurrency = 1)
+    {
+        try {
+            if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) {
+                throw new Exception('start_date (YYYY-MM-DD) is required');
+            }
+
+            $target_date = date('Y-m-d', strtotime('-1 day'));
+            if (strtotime($start_date) > strtotime($target_date)) {
+                echo "Nothing to process.\n";
+                return;
+            }
+
+            $conc = max(1, intval($concurrency));
+            echo "Starting SAS catch-up from $start_date to $target_date with concurrency=$conc...\n";
+
+            $this->load->model('sas_user_activity_etl_model', 'm_user_activity');
+            $this->load->model('sas_actvity_counts_model', 'm_activity_counts');
+            $this->load->model('sas_user_counts_model', 'm_user_counts');
+
+            // Adaptive throttle: if CP is running, reduce concurrency to 1
+            $cp_running = $this->is_cp_running();
+            if ($cp_running) {
+                $conc = 1;
+                echo "CP is running, throttling SAS concurrency to 1\n";
+            }
+
+            // Ensure course dimension is synced before processing
+            $this->sync_sas_courses();
+
+            // Build list of days (start_date can be overridden by watermark if behind)
+            if (method_exists($this->m_user_activity, 'get_watermark_date')) {
+                $wm = $this->m_user_activity->get_watermark_date('user_activity_etl');
+                if ($wm && strtotime($wm) >= strtotime($start_date)) {
+                    $start_date = date('Y-m-d', strtotime($wm . ' +1 day'));
+                }
+            }
+            // Build list of days
+            $days = [];
+            $cursor = $start_date;
+            while (strtotime($cursor) <= strtotime($target_date)) {
+                $days[] = $cursor;
+                $cursor = date('Y-m-d', strtotime($cursor . ' +1 day'));
+            }
+
+            // Simple worker pool (sync batches of size=concurrency)
+            $i = 0; $total = count($days); $processed = 0;
+            while ($i < $total) {
+                $batch = array_slice($days, $i, $conc);
+                foreach ($batch as $d) {
+                    // Process each day sequentially (for portability); can be parallelized via shell if needed
+                    $this->process_single_date($d);
+                    $processed++;
+                    // Update watermark after each successful day
+                    if (method_exists($this->m_user_activity, 'update_watermark_date')) {
+                        $this->m_user_activity->update_watermark_date($d, strtotime($d . ' 23:59:59'), 'user_activity_etl');
+                    }
+                }
+                $i += $conc;
+            }
+
+            echo "Catch-up done. Days processed: $processed\n";
+            // Log completion summary to SAS logs
+            $this->m_user_activity->update_etl_status('completed', date('Y-m-d', strtotime('-1 day')), [
+                'trigger' => 'cli_run_student_activity_from_start',
+                'message' => 'SAS catch-up completed',
+                'start_date' => $start_date,
+                'end_date' => $target_date,
+                'concurrency' => $conc,
+                'days_processed' => $processed
+            ]);
+        } catch (Exception $e) {
+            echo "SAS catch-up failed: " . $e->getMessage() . "\n";
+            // Log failure
+            if ($start_date) {
+                $this->m_user_activity->update_etl_status('failed', date('Y-m-d', strtotime('-1 day')), [
+                    'trigger' => 'cli_run_student_activity_from_start',
+                    'message' => 'SAS catch-up failed',
+                    'error' => $e->getMessage(),
+                    'start_date' => $start_date
+                ]);
+            }
+            exit(1);
+        }
+    }
+
+    // Sync sas_courses from Moodle for normalization
+    private function sync_sas_courses()
+    {
+        try {
+            // Read from Moodle
+            $moodle = $this->load->database('moodle', TRUE);
+            $sql = "SELECT c.id as course_id, c.idnumber as subject_id, c.fullname as course_name, c.shortname as course_shortname, c.category as program_id
+                    FROM mdl_course c
+                    WHERE c.idnumber IS NOT NULL AND c.idnumber != ''";
+            $courses = $moodle->query($sql)->result_array();
+
+            // Optional: map program to faculty via categories
+            $cats = $moodle->query("SELECT id, parent FROM mdl_course_categories")->result_array();
+            $catParent = [];
+            foreach ($cats as $cat) { $catParent[$cat['id']] = $cat['parent']; }
+
+            foreach ($courses as $row) {
+                $course_id = (int)$row['course_id'];
+                $program_id = isset($row['program_id']) ? (int)$row['program_id'] : null;
+                $faculty_id = ($program_id && isset($catParent[$program_id])) ? (int)$catParent[$program_id] : null;
+                $data = [
+                    'course_id' => $course_id,
+                    'subject_id' => $row['subject_id'],
+                    'course_name' => $row['course_name'],
+                    'course_shortname' => $row['course_shortname'],
+                    'program_id' => $program_id,
+                    'faculty_id' => $faculty_id,
+                    'visible' => 1,
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ];
+
+                // Upsert into sas_courses
+                $exists = $this->db->query("SELECT course_id FROM sas_courses WHERE course_id = ?", [$course_id])->num_rows() > 0;
+                if ($exists) {
+                    $this->db->where('course_id', $course_id)->update('sas_courses', $data);
+                } else {
+                    $data['created_at'] = date('Y-m-d H:i:s');
+                    $this->db->insert('sas_courses', $data);
+                }
+            }
+            echo "SAS courses synced: ".count($courses)."\n";
+        } catch (Exception $e) {
+            echo "SAS courses sync failed: ".$e->getMessage()."\n";
+        }
+    }
+
+    private function is_cp_running()
+    {
+        // Heuristic: check cp_etl_logs exists and has a running row in the last hour
+        $exists = $this->db->query("SHOW TABLES LIKE 'cp_etl_logs'")->num_rows() > 0;
+        if (!$exists) return false;
+        $q = $this->db->query("SELECT COUNT(*) AS c FROM cp_etl_logs WHERE status=2 AND start_date >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+        $row = $q->row();
+        return $row && intval($row->c) > 0;
     }
 
     /**
@@ -272,10 +421,15 @@ class Cli extends CI_Controller {
             $this->load->model('sas_actvity_counts_model', 'm_activity_counts');
             $this->load->model('sas_user_counts_model', 'm_user_counts');
             
-            // Get the last processed date directly from database
-            $query = $this->db->query("SELECT MAX(extraction_date) as last_processed FROM sas_user_activity_etl");
-            $result = $query->row();
-            $last_processed_date = $result ? $result->last_processed : null;
+            // Determine last processed via watermark first, fallback to ETL table
+            $last_processed_date = method_exists($this->m_user_activity, 'get_watermark_date')
+                ? $this->m_user_activity->get_watermark_date('user_activity_etl')
+                : null;
+            if (!$last_processed_date) {
+                $query = $this->db->query("SELECT MAX(extraction_date) as last_processed FROM sas_user_activity_etl");
+                $result = $query->row();
+                $last_processed_date = $result ? $result->last_processed : null;
+            }
             
             if (!$last_processed_date) {
                 // If no data exists, start from 7 days ago
@@ -322,6 +476,10 @@ class Cli extends CI_Controller {
                         $total_records_processed += $result['total_records'];
                         $total_dates_processed++;
                         echo "✅ Date $current_date processed successfully. Records: {$result['total_records']}\n";
+                        // Update watermark
+                        if (method_exists($this->m_user_activity, 'update_watermark_date')) {
+                            $this->m_user_activity->update_watermark_date($current_date, strtotime($current_date . ' 23:59:59'), 'user_activity_etl');
+                        }
                     } else {
                         echo "⏭️  No data available for date: $current_date\n";
                     }
@@ -429,6 +587,15 @@ class Cli extends CI_Controller {
             echo "Date range: $start_date to $end_date\n";
             
             log_message('info', "ETL process completed for date range. Dates: $total_dates_processed, Records: $total_records_processed");
+            // Also log completion to SAS logs (range summary)
+            $this->m_user_activity->update_etl_status('completed', $end_date, [
+                'trigger' => 'cli_run_student_activity_etl_range',
+                'message' => 'SAS ETL range completed',
+                'start_date' => $start_date,
+                'end_date' => $end_date,
+                'dates_processed' => $total_dates_processed,
+                'total_records' => $total_records_processed
+            ]);
             
         } catch (Exception $e) {
             echo "❌ ETL process failed: " . $e->getMessage() . "\n";
@@ -449,7 +616,8 @@ class Cli extends CI_Controller {
         
         echo "  🔍 Starting ETL process for date: $date\n";
         
-        // Update scheduler status to inprogress (2)
+        // Do not create per-day logs to avoid flooding; only scheduler status
+        $log_id = null;
         $this->m_user_activity->update_scheduler_status_inprogress($date);
         
         $current_date = date('Y-m-d', strtotime($date . ' +1 day'));
@@ -540,11 +708,13 @@ class Cli extends CI_Controller {
             log_message('error', "Main ETL error for date $date: " . $e->getMessage());
         }
         
-        // Update scheduler status to finished (1)
-        $this->m_user_activity->update_scheduler_status_finished($date);
-        
+        // Compute duration then update scheduler + log
         $end_time = microtime(true);
         $duration = round($end_time - $start_time, 2);
+
+        // Update scheduler status to finished (1) and log completion
+        $this->m_user_activity->update_scheduler_status_finished($date);
+        // No per-day finish log
         
         echo "  🎯 ETL process completed for date $date in {$duration}s\n";
         echo "  📊 Total records processed: $total_records\n";

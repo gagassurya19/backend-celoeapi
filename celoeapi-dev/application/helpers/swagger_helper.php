@@ -259,12 +259,26 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 	
 	// Handle special cases for ETL methods
 	if ($clean_method_name === 'run_pipeline') {
+		// Map SAS controller to new public path
+		if (strtolower($controller_name) === 'etl_sas' || strtolower($controller_name) === 'etl_student_activity_summary') {
+			return '/api/etl_sas/run';
+		}
 		return '/' . $path . '/run_pipeline';
 	}
 
 	// Map etl_cp_export/export to /api/etl_cp/export for nicer public path
 	if (strtolower($controller_name) === 'etl_cp_export' && $clean_method_name === 'export') {
 		return '/api/etl_cp/export';
+	}
+	
+	// Map SAS export and clean to new public paths (for both controller names)
+	if (strtolower($controller_name) === 'etl_sas' || strtolower($controller_name) === 'etl_student_activity_summary') {
+		if ($clean_method_name === 'export') {
+			return '/api/etl_sas/export';
+		}
+		if ($clean_method_name === 'clean_data') {
+			return '/api/etl_sas/clean';
+		}
 	}
 	
 	if ($clean_method_name === 'index') {
@@ -284,7 +298,9 @@ function generate_tag_from_controller($controller_name) {
 	$tag_mappings = [
 		'User_activity_etl' => 'User Activity',
 		'Etl_cp' => 'Course Performance ETL',
-		'Etl_cp_export' => 'Course Performance ETL'
+		'Etl_cp_export' => 'Course Performance ETL',
+		// Friendlier tag for SAS controller
+		'etl_sas' => 'Student Activity Summary ETL'
 	];
 	
 	return isset($tag_mappings[$controller_name]) ? $tag_mappings[$controller_name] : $tag;
@@ -586,7 +602,7 @@ function auto_discover_schemas() {
 		'ETLResponse' => [
 			'type' => 'object',
 			'properties' => [
-				'status' => [
+				' status' => [
 					'type' => 'boolean',
 					'example' => true
 				],

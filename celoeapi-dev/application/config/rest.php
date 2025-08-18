@@ -181,7 +181,7 @@ $config['auth_library_function'] = '';
 */
 // Disable authentication for all API controllers
 $config['auth_override_class_method']['etl_course_performance']['*'] = 'none';
-$config['auth_override_class_method']['etl_student_activity_summary']['*'] = 'none';
+$config['auth_override_class_method']['etl_sas']['*'] = 'none';
 
 
 // ---Uncomment list line for the wildard unit test

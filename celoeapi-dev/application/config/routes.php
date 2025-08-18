@@ -54,9 +54,10 @@ $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
 // API Routes (limited per request)
-$route['api/etl_student_activity_summary/run_pipeline']['POST'] = 'api/etl_student_activity_summary/run_pipeline';
-$route['api/etl_student_activity_summary/export']['GET'] = 'api/etl_student_activity_summary/export';
-$route['api/etl_student_activity_summary/clean_data']['POST'] = 'api/etl_student_activity_summary/clean_data';
+// SAS run endpoint (renamed)
+$route['api/etl_sas/run']['POST'] = 'api/etl_sas/run_pipeline';
+$route['api/etl_sas/export']['GET'] = 'api/etl_sas/export';
+$route['api/etl_sas/clean']['POST'] = 'api/etl_sas/clean_data';
 
 // Course Performance export endpoints (same prefix as etl_cp)
 $route['api/etl_cp/export']['GET'] = 'api/etl_cp_export/export';

@@ -78,6 +78,77 @@ class sas_user_activity_etl_model extends CI_Model {
 	}
 
 	/**
+	 * Create a single ETL log entry and return log_id
+	 */
+	public function create_etl_log($status = 'running', $extraction_date = null, $parameters = null)
+	{
+		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
+		$data = [
+			'process_name' => 'user_activity_etl',
+			'status' => $status,
+			'message' => is_array($parameters) && isset($parameters['message']) ? $parameters['message'] : null,
+			'start_time' => date('Y-m-d H:i:s'),
+			'extraction_date' => $extraction_date,
+			'parameters' => $parameters ? json_encode($parameters) : null,
+			'created_at' => date('Y-m-d H:i:s'),
+			'updated_at' => date('Y-m-d H:i:s')
+		];
+		if (!$this->db->table_exists('sas_etl_logs')) {
+			return null;
+		}
+		$this->db->insert('sas_etl_logs', $data);
+		return $this->db->insert_id();
+	}
+
+	/**
+	 * Finalize/update an existing ETL log by id
+	 */
+	public function finish_etl_log($log_id, $status = 'completed', $parameters = null)
+	{
+		if (!$log_id || !$this->db->table_exists('sas_etl_logs')) {
+			return false;
+		}
+		// Get start_time to compute duration
+		$row = $this->db->get_where('sas_etl_logs', ['id' => $log_id])->row_array();
+		$start = isset($row['start_time']) ? strtotime($row['start_time']) : time();
+		$data = [
+			'status' => $status,
+			'message' => is_array($parameters) && isset($parameters['message']) ? $parameters['message'] : null,
+			'end_time' => date('Y-m-d H:i:s'),
+			'duration_seconds' => max(0, time() - $start),
+			'updated_at' => date('Y-m-d H:i:s')
+		];
+		if ($parameters) {
+			$data['parameters'] = json_encode($parameters);
+		}
+		$this->db->where('id', $log_id)->update('sas_etl_logs', $data);
+		return true;
+	}
+
+	/**
+	 * Watermark helpers
+	 */
+	public function get_watermark_date($process_name = 'user_activity_etl')
+	{
+		if (!$this->db->table_exists('sas_etl_watermarks')) {
+			return null;
+		}
+		$row = $this->db->get_where('sas_etl_watermarks', ['process_name' => $process_name])->row_array();
+		return $row && isset($row['last_date']) ? $row['last_date'] : null;
+	}
+
+	public function update_watermark_date($date, $timestamp = null, $process_name = 'user_activity_etl')
+	{
+		if (!$this->db->table_exists('sas_etl_watermarks')) {
+			return false;
+		}
+		$sql = "INSERT INTO sas_etl_watermarks (process_name, last_date, last_timecreated, updated_at)
+				VALUES (?, ?, ?, NOW())
+				ON DUPLICATE KEY UPDATE last_date = VALUES(last_date), last_timecreated = VALUES(last_timecreated), updated_at = NOW()";
+		return $this->db->query($sql, [$process_name, $date, $timestamp]);
+	}
+
+	/**
 	 * Export ETL data with pagination
 	 */
 	public function export_data($limit = 100, $offset = 0, $date = null)
@@ -123,6 +194,44 @@ class sas_user_activity_etl_model extends CI_Model {
 		$this->db->delete('sas_user_activity_etl');
 		
 		return $this->db->affected_rows();
+	}
+
+	/**
+	 * Clear ALL ETL data across SAS tables (no date filter)
+	 */
+	public function clear_all_etl_data()
+	{
+		$tables = [
+			'sas_user_activity_etl',
+			'sas_activity_counts_etl',
+			'sas_user_counts_etl'
+		];
+		
+		$summary = [
+			'tables' => [],
+			'total_affected' => 0
+		];
+		
+		foreach ($tables as $table) {
+			if ($this->db->table_exists($table)) {
+				// count before truncate to report cleared rows
+				$count_before = (int) $this->db->count_all($table);
+				$summary['tables'][$table] = $count_before;
+				$summary['total_affected'] += $count_before;
+				
+				// prefer TRUNCATE for speed; fallback to DELETE if needed
+				try {
+					$this->db->truncate($table);
+				} catch (Exception $e) {
+					$this->db->where('1 = 1');
+					$this->db->delete($table);
+				}
+			} else {
+				log_message('info', 'Table does not exist, skipping: ' . $table);
+			}
+		}
+		
+		return $summary;
 	}
 
 	/**
@@ -524,15 +633,15 @@ class sas_user_activity_etl_model extends CI_Model {
 			return [];
 		}
 		
-		// Use main database for the query with cross-database JOIN
+		// Use normalized course dimension table (sas_courses)
 		$sql = "
 			SELECT DISTINCT
-				c.id AS course_id,
-				program.id AS program_id,
-				faculty.id AS faculty_id,
-				c.idnumber AS `Subject_ID`,
-				c.fullname AS `Course_Name`,
-				c.shortname AS `Course_Shortname`,
+				c.course_id AS course_id,
+				c.program_id AS program_id,
+				c.faculty_id AS faculty_id,
+				c.subject_id AS `Subject_ID`,
+				c.course_name AS `Course_Name`,
+				c.course_shortname AS `Course_Shortname`,
 				COALESCE(uc.num_teachers, 0) AS `Num_Teachers`,
 				COALESCE(uc.num_students, 0) AS `Num_Students`,
 				COALESCE(ac.file_views, 0) AS `File_Views`,
@@ -549,14 +658,10 @@ class sas_user_activity_etl_model extends CI_Model {
 					/ NULLIF(ac.active_days, 0),
 					2
 				) AS `Avg_Activity_per_Student_per_Day`
-			FROM `{$moodle_db_name}`.`mdl_course` c
-			LEFT JOIN `{$moodle_db_name}`.`mdl_course_categories` program
-				ON c.category = program.id AND program.depth = 2
-			LEFT JOIN `{$moodle_db_name}`.`mdl_course_categories` faculty
-				ON faculty.id = program.parent AND faculty.depth = 1
-			LEFT JOIN `{$main_db_name}`.`sas_activity_counts_etl` ac ON c.id = ac.courseid AND ac.extraction_date = ?
-			LEFT JOIN `{$main_db_name}`.`sas_user_counts_etl` uc ON c.id = uc.courseid AND uc.extraction_date = ?
-			WHERE c.visible = 1 AND c.idnumber IS NOT NULL AND c.idnumber != ''
+			FROM `{$main_db_name}`.`sas_courses` c
+			LEFT JOIN `{$main_db_name}`.`sas_activity_counts_etl` ac ON c.course_id = ac.courseid AND ac.extraction_date = ?
+			LEFT JOIN `{$main_db_name}`.`sas_user_counts_etl` uc ON c.course_id = uc.courseid AND uc.extraction_date = ?
+			WHERE c.visible = 1 AND c.subject_id IS NOT NULL AND c.subject_id != ''
 		";
 		
 		$params = [$date, $date];
@@ -566,9 +671,9 @@ class sas_user_activity_etl_model extends CI_Model {
 			$params[] = $course_id;
 		}
 		
-		$sql .= " GROUP BY c.id, program.id, faculty.id, c.idnumber, c.fullname, c.shortname, uc.num_teachers, uc.num_students, ac.file_views, ac.video_views, ac.forum_views, ac.quiz_views, ac.assignment_views, ac.url_views, ac.active_days";
+		$sql .= " GROUP BY c.course_id, c.program_id, c.faculty_id, c.subject_id, c.course_name, c.course_shortname, uc.num_teachers, uc.num_students, ac.file_views, ac.video_views, ac.forum_views, ac.quiz_views, ac.assignment_views, ac.url_views, ac.active_days";
 		
-		$sql .= " ORDER BY c.id ASC";
+		$sql .= " ORDER BY c.course_id ASC";
 		
 		if ($limit !== null) {
 			$sql .= " LIMIT {$limit} OFFSET {$offset}";
@@ -588,7 +693,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	private function _check_etl_tables_exist()
 	{
-		$required_tables = ['sas_user_activity_etl', 'sas_activity_counts_etl', 'sas_user_counts_etl'];
+		$required_tables = ['sas_user_activity_etl', 'sas_activity_counts_etl', 'sas_user_counts_etl', 'sas_courses'];
 		
 		foreach ($required_tables as $table) {
 			if (!$this->db->table_exists($table)) {
@@ -619,12 +724,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		
 		foreach ($data as $row) {
 			$etl_data = [
-				'course_id' => $row['course_id'] ?: null,
-				'faculty_id' => isset($row['faculty_id']) ? $row['faculty_id'] : null,
-				'program_id' => isset($row['program_id']) ? $row['program_id'] : null,
-				'subject_id' => isset($row['Subject_ID']) ? $row['Subject_ID'] : (isset($row['subject_id']) ? $row['subject_id'] : null),
-				'course_name' => isset($row['Course_Name']) ? $row['Course_Name'] : (isset($row['course_name']) ? $row['course_name'] : null),
-				'course_shortname' => isset($row['Course_Shortname']) ? $row['Course_Shortname'] : (isset($row['course_shortname']) ? $row['course_shortname'] : null),
+				'course_id' => isset($row['course_id']) ? $row['course_id'] : null,
 				'num_teachers' => isset($row['Num_Teachers']) ? $row['Num_Teachers'] : (isset($row['num_teachers']) ? $row['num_teachers'] : 0),
 				'num_students' => isset($row['Num_Students']) ? $row['Num_Students'] : (isset($row['num_students']) ? $row['num_students'] : 0),
 				'file_views' => isset($row['File_Views']) ? $row['File_Views'] : (isset($row['file_views']) ? $row['file_views'] : 0),
@@ -640,7 +740,6 @@ class sas_user_activity_etl_model extends CI_Model {
 				'created_at' => date('Y-m-d H:i:s'),
 				'updated_at' => date('Y-m-d H:i:s')
 			];
-			
 			$this->db->insert('sas_user_activity_etl', $etl_data);
 		}
 		
