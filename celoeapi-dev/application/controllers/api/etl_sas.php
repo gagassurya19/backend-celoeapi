@@ -274,12 +274,16 @@ class etl_sas extends REST_Controller {
 	{
 		try {
 			$this->load->database();
-			$this->load->model('sas_user_activity_etl_model', 'm_user_activity');
 
 			$limit = (int) ($this->input->get('limit') ?: 100);
 			$offset = (int) ($this->input->get('offset') ?: 0);
 			$date = $this->input->get('date');
 			$course_id = $this->input->get('course_id');
+			
+			// Optional: include specific tables via comma-separated list
+			$tablesParam = $this->get('tables');
+			$singleTableParam = $this->get('table');
+			$debug = $this->get('debug');
 
 			if ($offset < 0) {
 				$this->response([
@@ -289,13 +293,45 @@ class etl_sas extends REST_Controller {
 				return;
 			}
 
-			$data = $this->m_user_activity->get_user_activity_etl($course_id, $date, $limit, $offset);
-			$total_count = (int) $this->m_user_activity->get_user_activity_total_count($course_id, $date);
+			// Define all SAS tables to export
+			$allTables = [
+				'sas_user_activity_etl',
+				'sas_activity_counts_etl', 
+				'sas_user_counts_etl',
+				'sas_courses'
+			];
+
+			$requestedTables = $allTables;
+			if (!empty($singleTableParam)) {
+				$requestedTables = array_values(array_intersect($allTables, [trim($singleTableParam)]));
+			}
+			if (!empty($tablesParam)) {
+				$requested = array_map('trim', explode(',', $tablesParam));
+				// Filter only known tables to prevent SQL injection on identifiers
+				$requestedTables = array_values(array_intersect($allTables, $requested));
+				if (empty($requestedTables)) {
+					$requestedTables = $allTables;
+				}
+			}
+
+			$tablesResult = [];
+			$overallHasNext = false;
+
+			foreach ($requestedTables as $table) {
+				$tableResult = $this->_fetch_sas_table_page($table, $limit, $offset, $date, $course_id);
+				if ($debug) { 
+					$tableResult['debug'] = $this->_table_debug_counts($table, $date, $course_id); 
+				}
+				$tablesResult[$table] = $tableResult;
+				if (!empty($tableResult['hasNext'])) {
+					$overallHasNext = true;
+				}
+			}
 
 			$this->response([
 				'status' => true,
-				'data' => $data,
-				'has_next' => (($offset + $limit) < $total_count),
+				'data' => $tablesResult,
+				'has_next' => $overallHasNext,
 				'filters' => [
 					'date' => $date,
 					'course_id' => $course_id
@@ -303,9 +339,8 @@ class etl_sas extends REST_Controller {
 				'pagination' => [
 					'limit' => (int) $limit,
 					'offset' => (int) $offset,
-					'count' => count($data),
-					'total_count' => (int) $total_count,
-					'has_more' => ($offset + $limit) < $total_count
+					'count' => count($tablesResult),
+					'has_more' => $overallHasNext
 				]
 			], REST_Controller::HTTP_OK);
 		} catch (Exception $e) {
@@ -316,5 +351,121 @@ class etl_sas extends REST_Controller {
 				'error' => $e->getMessage()
 			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Fetch data from a specific SAS table with pagination and filters
+	 */
+	private function _fetch_sas_table_page($table, $limit, $offset, $date = null, $course_id = null)
+	{
+		$limitPlusOne = $limit + 1;
+		$whereConditions = [];
+		$params = [];
+
+		// Build WHERE conditions based on table structure
+		if ($course_id !== null) {
+			if ($table === 'sas_courses') {
+				$whereConditions[] = 'course_id = ?';
+			} else {
+				// Handle different column names for course_id
+				if ($table === 'sas_activity_counts_etl' || $table === 'sas_user_counts_etl') {
+					$whereConditions[] = 'courseid = ?';
+				} else {
+					$whereConditions[] = 'course_id = ?';
+				}
+			}
+			$params[] = $course_id;
+		}
+
+		if ($date !== null) {
+			if ($table === 'sas_courses') {
+				// Courses table doesn't have date filter
+			} else {
+				$whereConditions[] = 'extraction_date = ?';
+				$params[] = $date;
+			}
+		}
+
+		$whereSql = '';
+		if (!empty($whereConditions)) {
+			$whereSql = ' WHERE ' . implode(' AND ', $whereConditions);
+		}
+
+		// Handle different primary key columns
+		$orderBy = 'id';
+		if ($table === 'sas_courses') {
+			$orderBy = 'course_id';
+		}
+
+		$sql = "SELECT * FROM `{$table}`" . $whereSql . " ORDER BY `{$orderBy}` ASC LIMIT {$limitPlusOne} OFFSET {$offset}";
+		$query = $this->db->query($sql, $params);
+		$rows = $query->result_array();
+		
+		$hasNext = false;
+		if (count($rows) > $limit) {
+			$hasNext = true;
+			$rows = array_slice($rows, 0, $limit);
+		}
+
+		return [
+			'count' => count($rows),
+			'hasNext' => $hasNext,
+			'nextOffset' => $hasNext ? ($offset + $limit) : null,
+			'rows' => $rows,
+		];
+	}
+
+	/**
+	 * Get debug counts for a specific table
+	 */
+	private function _table_debug_counts($table, $date = null, $course_id = null)
+	{
+		$total = 0;
+		$filtered = null;
+		
+		try {
+			// Get total count
+			$q = $this->db->query("SELECT COUNT(*) AS c FROM `{$table}`");
+			$row = $q->row_array();
+			if ($row && isset($row['c'])) { 
+				$total = intval($row['c']); 
+			}
+		} catch (Exception $e) {
+			// ignore
+		}
+
+		// Get filtered count if filters applied
+		if (($date !== null || $course_id !== null) && $table !== 'sas_courses') {
+			try {
+				$whereConditions = [];
+				$params = [];
+
+				if ($course_id !== null) {
+					$whereConditions[] = 'course_id = ?';
+					$params[] = $course_id;
+				}
+
+				if ($date !== null) {
+					$whereConditions[] = 'extraction_date = ?';
+					$params[] = $date;
+				}
+
+				if (!empty($whereConditions)) {
+					$whereSql = ' WHERE ' . implode(' AND ', $whereConditions);
+					$q2 = $this->db->query("SELECT COUNT(*) AS c FROM `{$table}`" . $whereSql, $params);
+					$row2 = $q2->row_array();
+					if ($row2 && isset($row2['c'])) { 
+						$filtered = intval($row2['c']); 
+					}
+				}
+			} catch (Exception $e) {
+				// ignore
+			}
+		}
+
+		return [
+			'totalCount' => $total,
+			'filteredCount' => $filtered,
+		];
 	}
 }

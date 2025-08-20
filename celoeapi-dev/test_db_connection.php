@@ -72,3 +72,5 @@ echo "   - Docker containers are running\n";
 echo "   - MySQL port 3302 is accessible\n";
 echo "   - Database credentials are correct\n";
 echo "   - Firewall settings\n";
+
+
