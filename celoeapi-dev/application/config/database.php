@@ -73,8 +73,15 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 $active_group = 'default';
 $query_builder = TRUE;
 
-// Detect if running inside Docker container or on host machine
+// Detect environment and configuration
+$environment = getenv('CI_ENV') ?: 'development';
 $is_docker = file_exists('/.dockerenv') || (isset($_SERVER['HOSTNAME']) && strpos($_SERVER['HOSTNAME'], 'docker') !== false);
+
+// Load production config if specified
+if ($environment === 'production') {
+    include_once 'database_production.php';
+    return; // Exit early, production config loaded
+}
 
 // Database configuration for default database (celoeapi)
 if ($is_docker) {

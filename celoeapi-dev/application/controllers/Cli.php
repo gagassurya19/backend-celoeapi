@@ -355,9 +355,14 @@ class Cli extends CI_Controller {
         try {
             // Read from Moodle
             $moodle = $this->load->database('moodle', TRUE);
+            // $sql = "SELECT c.id as course_id, c.idnumber as subject_id, c.fullname as course_name, c.shortname as course_shortname, c.category as program_id
+            //         FROM mdl_course c
+            //         WHERE c.idnumber IS NOT NULL AND c.idnumber != ''
+            //         ";
+
             $sql = "SELECT c.id as course_id, c.idnumber as subject_id, c.fullname as course_name, c.shortname as course_shortname, c.category as program_id
-                    FROM mdl_course c
-                    WHERE c.idnumber IS NOT NULL AND c.idnumber != ''";
+            FROM mdl_course c
+            ";
             $courses = $moodle->query($sql)->result_array();
 
             // Optional: map program to faculty via categories

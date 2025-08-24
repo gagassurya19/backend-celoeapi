@@ -116,7 +116,7 @@ class sas_user_counts_model extends CI_Model {
             SELECT
                 ctx.instanceid AS courseid,
                 COUNT(DISTINCT CASE WHEN ra.roleid = 5 THEN ra.userid END) AS Num_Students,
-                COUNT(DISTINCT CASE WHEN ra.roleid = 4 THEN ra.userid END) AS Num_Teachers
+                COUNT(DISTINCT CASE WHEN ra.roleid = 4 or ra.roleid = 3 THEN ra.userid END) AS Num_Teachers
             FROM mdl_role_assignments ra
             JOIN mdl_context ctx ON ra.contextid = ctx.id
             WHERE ctx.contextlevel = 50

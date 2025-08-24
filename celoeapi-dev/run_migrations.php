@@ -44,7 +44,7 @@ try {
     // Run migrations to latest version
     echo "Running migrations to latest version...\n";
     
-    if ($CI->migration->version(18) === FALSE) {
+    if ($CI->migration->version(7) === FALSE) {
         echo "Migration failed: " . $CI->migration->error_string() . "\n";
         exit(1);
     } else {

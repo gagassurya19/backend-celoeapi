@@ -642,6 +642,36 @@ class sas_user_activity_etl_model extends CI_Model {
 		}
 		
 		// Use normalized course dimension table (sas_courses)
+		// $sql = "
+		// 	SELECT DISTINCT
+		// 		c.course_id AS course_id,
+		// 		c.program_id AS program_id,
+		// 		c.faculty_id AS faculty_id,
+		// 		c.subject_id AS `Subject_ID`,
+		// 		c.course_name AS `Course_Name`,
+		// 		c.course_shortname AS `Course_Shortname`,
+		// 		COALESCE(uc.num_teachers, 0) AS `Num_Teachers`,
+		// 		COALESCE(uc.num_students, 0) AS `Num_Students`,
+		// 		COALESCE(ac.file_views, 0) AS `File_Views`,
+		// 		COALESCE(ac.video_views, 0) AS `Video_Views`,
+		// 		COALESCE(ac.forum_views, 0) AS `Forum_Views`,
+		// 		COALESCE(ac.quiz_views, 0) AS `Quiz_Views`,
+		// 		COALESCE(ac.assignment_views, 0) AS `Assignment_Views`,
+		// 		COALESCE(ac.url_views, 0) AS `URL_Views`,
+		// 		(COALESCE(ac.file_views, 0) + COALESCE(ac.video_views, 0) + COALESCE(ac.forum_views, 0) + COALESCE(ac.quiz_views, 0) + COALESCE(ac.assignment_views, 0) + COALESCE(ac.url_views, 0)) AS `Total_Views`,
+		// 		COALESCE(ac.active_days, 0) AS `Active_Days`,
+		// 		ROUND(
+		// 			(COALESCE(ac.file_views, 0) + COALESCE(ac.video_views, 0) + COALESCE(ac.forum_views, 0) + COALESCE(ac.quiz_views, 0) + COALESCE(ac.assignment_views, 0) + COALESCE(ac.url_views, 0))
+		// 			/ NULLIF(uc.num_students, 0)
+		// 			/ NULLIF(ac.active_days, 0),
+		// 			2
+		// 		) AS `Avg_Activity_per_Student_per_Day`
+		// 	FROM `{$main_db_name}`.`sas_courses` c
+		// 	LEFT JOIN `{$main_db_name}`.`sas_activity_counts_etl` ac ON c.course_id = ac.courseid AND ac.extraction_date = ?
+		// 	LEFT JOIN `{$main_db_name}`.`sas_user_counts_etl` uc ON c.course_id = uc.courseid AND uc.extraction_date = ?
+		// 	WHERE c.visible = 1 AND c.subject_id IS NOT NULL AND c.subject_id != ''
+		// ";
+
 		$sql = "
 			SELECT DISTINCT
 				c.course_id AS course_id,
@@ -669,7 +699,7 @@ class sas_user_activity_etl_model extends CI_Model {
 			FROM `{$main_db_name}`.`sas_courses` c
 			LEFT JOIN `{$main_db_name}`.`sas_activity_counts_etl` ac ON c.course_id = ac.courseid AND ac.extraction_date = ?
 			LEFT JOIN `{$main_db_name}`.`sas_user_counts_etl` uc ON c.course_id = uc.courseid AND uc.extraction_date = ?
-			WHERE c.visible = 1 AND c.subject_id IS NOT NULL AND c.subject_id != ''
+			WHERE c.visible = 1 AND c.subject_id IS NOT NULL
 		";
 		
 		$params = [$date, $date];

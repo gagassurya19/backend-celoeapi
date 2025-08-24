@@ -70,7 +70,7 @@ class Cp_etl_model extends CI_Model
         return $this->db->query($sql, [$process_name, $date, $timestamp]);
     }
 
-    private function create_log($status = 2, $type = 'run_etl', $requestedStartDate = null)
+    private function create_log($status = 2, $type = 'run_etl', $requestedStartDate = null, $existingLogId = null)
     {
         $data = [
             'offset' => 0,
@@ -86,8 +86,17 @@ class Cp_etl_model extends CI_Model
             'duration_seconds' => null,
             'created_at' => date('Y-m-d H:i:s'),
         ];
-        $this->db->insert('cp_etl_logs', $data);
-        return $this->db->insert_id();
+        
+        if ($existingLogId) {
+            // Update existing log
+            unset($data['message']); // Don't overwrite existing message
+            $this->db->where('id', $existingLogId)->update('cp_etl_logs', $data);
+            return $existingLogId;
+        } else {
+            // Insert new log
+            $this->db->insert('cp_etl_logs', $data);
+            return $this->db->insert_id();
+        }
     }
 
     private function mark_inprogress($logId)
@@ -175,15 +184,17 @@ class Cp_etl_model extends CI_Model
             throw new Exception('Invalid start_date. Use YYYY-MM-DD');
         }
 
-        $logId = $existingLogId ?: $this->create_log(2, 'backfill', $startDate);
-        if ($existingLogId) {
-            $this->mark_inprogress($logId);
-        }
-
         // Shift startDate forward based on watermark if available
         $wmDate = $this->get_watermark_date('cp_etl');
         if ($wmDate && strtotime($wmDate) >= strtotime($startDate)) {
-            $startDate = date('Y-m-d', strtotime($wmDate . ' +1 day'));
+            $startDate = date('Y-m-d', strtotime($wmDate));
+        }
+
+        $this->create_log(2, 'run_cp_backfill', $startDate, $existingLogId);
+
+        
+        if ($existingLogId) {
+            $this->mark_inprogress($existingLogId);
         }
 
         $startTs = strtotime($startDate);
@@ -194,7 +205,7 @@ class Cp_etl_model extends CI_Model
 
         // Ensure student profiles seeded once (idempotent via unique user_id)
         $this->seed_student_profiles();
-
+        $this->etl_student_quiz_detail();
         $dates = [];
         for ($ts = $startTs; $ts <= $endTs; $ts = strtotime('+1 day', $ts)) {
             $dates[] = date('Y-m-d', $ts);
@@ -257,15 +268,17 @@ class Cp_etl_model extends CI_Model
         $this->rebuild_course_summary();
         $this->rebuild_activity_summary_from_cp_details();
 
+        log_message('info', 'CP ETL Backfill - Completed: ' . $existingLogId . ' with ' . $insertedTotal . ' inserted' . $startDate);
+
         // Update log at the end
-        $this->complete_log($logId, $insertedTotal, $startDate, date('Y-m-d'));
+        $this->complete_log($existingLogId, $insertedTotal, $startDate, date('Y-m-d'));
 
         return [
             'success' => true,
             'processed_days' => count($dates),
             'inserted_total' => $insertedTotal,
             'concurrency' => $usedConcurrency,
-            'log_id' => $logId,
+            'log_id' => $existingLogId,
         ];
     }
 
@@ -301,7 +314,7 @@ class Cp_etl_model extends CI_Model
     public function process_single_date($date)
     {
         $inserted = 0;
-        $inserted += $this->etl_student_quiz_detail_for_date($date);
+        // $inserted += $this->etl_student_quiz_detail_for_date($date);
         $inserted += $this->etl_student_assignment_detail_for_date($date);
         $inserted += $this->etl_student_resource_access_for_date($date);
         return $inserted;
@@ -316,37 +329,71 @@ class Cp_etl_model extends CI_Model
         );
         $sql = "
             INSERT INTO cp_student_quiz_detail (quiz_id, user_id, nim, full_name, waktu_mulai, waktu_selesai, durasi_waktu, jumlah_soal, jumlah_dikerjakan, nilai)
-            SELECT qa.quiz AS quiz_id,
-                   qa.userid AS user_id,
-                   uid.idnumber AS nim,
-                   TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
-                   FROM_UNIXTIME(qa.timestart) AS waktu_mulai,
-                   FROM_UNIXTIME(qa.timefinish) AS waktu_selesai,
-                   CASE WHEN qa.timefinish > 0 AND qa.timestart > 0 THEN SEC_TO_TIME(qa.timefinish - qa.timestart) ELSE NULL END AS durasi_waktu,
-                   qs.num_questions AS jumlah_soal,
-                   NULL AS jumlah_dikerjakan,
-                   qasum.grade AS nilai
-            FROM {$this->moodleDbName}.mdl_quiz_attempts qa
-            JOIN {$this->moodleDbName}.mdl_user u ON u.id = qa.userid
-            LEFT JOIN (
-                SELECT d.userid, d.data AS idnumber
-                FROM {$this->moodleDbName}.mdl_user_info_data d
-                JOIN {$this->moodleDbName}.mdl_user_info_field f ON f.id = d.fieldid
-                WHERE LOWER(f.shortname) IN ('idnumber','nim','npm')
-            ) uid ON uid.userid = u.id
+            SELECT
+                l.contextinstanceid AS quiz_id,
+                l.userid AS user_id,
+                uid.idnumber AS nim,
+                TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
+                FROM_UNIXTIME(qa.timestart) AS waktu_mulai,
+                FROM_UNIXTIME(qa.timefinish) AS waktu_selesai,
+                CASE WHEN qa.timefinish > 0 AND qa.timestart > 0 THEN SEC_TO_TIME(qa.timefinish - qa.timestart) ELSE NULL END AS durasi_waktu,
+                qs.num_questions AS jumlah_soal,
+                NULL AS jumlah_dikerjakan,
+                qasum.grade AS nilai
+            FROM
+                {$this->moodleDbName}.mdl_logstore_standard_log l
             JOIN (
-                SELECT quizid AS quiz, COUNT(*) AS num_questions
-                FROM {$this->moodleDbName}.mdl_quiz_slots
-                GROUP BY quizid
-            ) qs ON qs.quiz = qa.quiz
+                SELECT
+                    MIN(id) AS min_id
+                FROM
+                    {$this->moodleDbName}.mdl_logstore_standard_log
+                WHERE
+                    component = 'mod_quiz'
+                GROUP BY
+                    userid, contextinstanceid, action
+            ) l_min ON l.id = l_min.min_id
+            JOIN
+                {$this->moodleDbName}.mdl_course_modules cm ON cm.id = l.contextinstanceid
+            LEFT JOIN
+                {$this->moodleDbName}.mdl_quiz_attempts qa ON qa.quiz = cm.instance AND qa.userid = l.userid
+            JOIN
+                {$this->moodleDbName}.mdl_user u ON u.id = l.userid
+            JOIN
+                {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'quiz'
             LEFT JOIN (
-                SELECT gi.iteminstance AS quizid, g.finalgrade AS grade, g.userid
-                FROM {$this->moodleDbName}.mdl_grade_items gi
-                JOIN {$this->moodleDbName}.mdl_grade_grades g ON g.itemid = gi.id
-                WHERE gi.itemtype = 'mod' AND gi.itemmodule = 'quiz'
-            ) qasum ON qasum.quizid = qa.quiz AND qasum.userid = qa.userid
-            WHERE qa.timestart >= UNIX_TIMESTAMP(?)
-              AND qa.timestart < UNIX_TIMESTAMP(DATE_ADD(?, INTERVAL 1 DAY))
+                SELECT
+                    d.userid,
+                    d.data AS idnumber
+                FROM
+                    {$this->moodleDbName}.mdl_user_info_data d
+                JOIN
+                    {$this->moodleDbName}.mdl_user_info_field f ON f.id = d.fieldid
+                WHERE
+                    LOWER(f.shortname) IN ('idnumber','nim','npm')
+            ) uid ON uid.userid = u.id
+            LEFT JOIN (
+                SELECT
+                    quizid AS quiz,
+                    COUNT(*) AS num_questions
+                FROM
+                    {$this->moodleDbName}.mdl_quiz_slots
+                GROUP BY
+                    quizid
+            ) qs ON qs.quiz = cm.instance
+            LEFT JOIN (
+                SELECT
+                    gi.iteminstance AS quizid,
+                    g.finalgrade AS grade,
+                    g.userid
+                FROM
+                    {$this->moodleDbName}.mdl_grade_items gi
+                JOIN
+                    {$this->moodleDbName}.mdl_grade_grades g ON g.itemid = gi.id
+                WHERE
+                    gi.itemtype = 'mod' AND gi.itemmodule = 'quiz'
+            ) qasum ON qasum.quizid = cm.instance AND qasum.userid = l.userid
+            WHERE
+                l.action = 'viewed' 
         ";
         $this->db->query($sql, [$date, $date]);
         return $this->db->affected_rows();
@@ -439,7 +486,7 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_activity_summary (course_id, section, activity_id, activity_type, activity_name, accessed_count, submission_count, graded_count, attempted_count)
             SELECT c.id AS course_id,
                    cm.section,
-                   cm.id AS activity_id,
+                   cra.resource_id AS activity_id,
                    'resource' AS activity_type,
                    r.name AS activity_name,
                    COUNT(cra.id) AS accessed_count,
@@ -448,7 +495,7 @@ class Cp_etl_model extends CI_Model
                    NULL AS attempted_count
             FROM {$this->moodleDbName}.mdl_course_modules cm
             JOIN {$this->moodleDbName}.mdl_course c ON c.id = cm.course
-            JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'resource'
+            JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'resource' and cm.module in (1,18,19)
             JOIN {$this->moodleDbName}.mdl_resource r ON r.id = cm.instance
             LEFT JOIN cp_student_resource_access cra ON cra.resource_id = cm.id
             GROUP BY c.id, cm.section, cm.id, r.name
@@ -460,10 +507,10 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_activity_summary (course_id, section, activity_id, activity_type, activity_name, accessed_count, submission_count, graded_count, attempted_count)
             SELECT c.id AS course_id,
                    cm.section,
-                   cm.id AS activity_id,
+                   csqd.quiz_id AS activity_id,
                    'quiz' AS activity_type,
                    q.name AS activity_name,
-                   NULL AS accessed_count,
+                   COUNT(csqd.id) AS accessed_count,
                    NULL AS submission_count,
                    SUM(CASE WHEN csqd.nilai IS NOT NULL THEN 1 ELSE 0 END) AS graded_count,
                    COUNT(csqd.id) AS attempted_count
@@ -471,7 +518,8 @@ class Cp_etl_model extends CI_Model
             JOIN {$this->moodleDbName}.mdl_course c ON c.id = cm.course
             JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'quiz'
             JOIN {$this->moodleDbName}.mdl_quiz q ON q.id = cm.instance
-            LEFT JOIN cp_student_quiz_detail csqd ON csqd.quiz_id = q.id
+            LEFT JOIN cp_student_quiz_detail csqd ON csqd.quiz_id = cm.id
+            WHERE csqd.id IS NOT NULL
             GROUP BY c.id, cm.section, cm.id, q.name
         ";
         $this->db->query($sqlQuiz);
@@ -481,16 +529,16 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_activity_summary (course_id, section, activity_id, activity_type, activity_name, accessed_count, submission_count, graded_count, attempted_count)
             SELECT c.id AS course_id,
                    cm.section,
-                   cm.id AS activity_id,
+                   csad.assignment_id AS activity_id,
                    'assign' AS activity_type,
                    a.name AS activity_name,
-                   NULL AS accessed_count,
+                   COUNT(csad.id) AS accessed_count,
                    COUNT(csad.id) AS submission_count,
                    SUM(CASE WHEN csad.nilai IS NOT NULL THEN 1 ELSE 0 END) AS graded_count,
                    NULL AS attempted_count
             FROM {$this->moodleDbName}.mdl_course_modules cm
             JOIN {$this->moodleDbName}.mdl_course c ON c.id = cm.course
-            JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'assign'
+            JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'assign' and cm.module in (1,18,19)
             JOIN {$this->moodleDbName}.mdl_assign a ON a.id = cm.instance
             LEFT JOIN cp_student_assignment_detail csad ON csad.assignment_id = a.id
             GROUP BY c.id, cm.section, cm.id, a.name
@@ -600,13 +648,16 @@ class Cp_etl_model extends CI_Model
             FROM {$this->moodleDbName}.mdl_course c
             LEFT JOIN (
                 SELECT course, COUNT(*) ct
-                FROM {$this->moodleDbName}.mdl_course_modules
+                FROM {$this->moodleDbName}.mdl_course_modules cmt
+                WHERE cmt.module in (1,18,19)
                 GROUP BY course
             ) cm ON cm.course = c.id
             LEFT JOIN (
                 SELECT e.courseid AS course, COUNT(DISTINCT ue.userid) ct
                 FROM {$this->moodleDbName}.mdl_enrol e
                 JOIN {$this->moodleDbName}.mdl_user_enrolments ue ON ue.enrolid = e.id
+                JOIN {$this->moodleDbName}.mdl_course_modules cmt ON e.courseid = cmt.course 
+                WHERE cmt.module in (1,18,19)
                 GROUP BY e.courseid
             ) s ON s.course = c.id
             LEFT JOIN (
@@ -634,7 +685,12 @@ class Cp_etl_model extends CI_Model
                    cm.id AS activity_id,
                    m.name AS activity_type,
                    COALESCE(a.name, q.name, r.name, l.name, 'activity') AS activity_name,
-                   COALESCE(lg.accessed_count, 0) AS accessed_count,
+                   CASE 
+                       WHEN m.name = 'assign' THEN COALESCE(asub.submission_count, 0)
+                       WHEN m.name = 'quiz' THEN COALESCE(qa.attempted_count, 0)
+                       WHEN m.name = 'resource' THEN COALESCE(lg.accessed_count, 0)
+                       ELSE COALESCE(lg.accessed_count, 0)
+                   END AS accessed_count,
                    CASE WHEN m.name = 'assign' THEN COALESCE(asub.submission_count, 0) ELSE NULL END AS submission_count,
                    CASE WHEN m.name IN ('assign','quiz') THEN COALESCE(gg.graded_count, 0) ELSE NULL END AS graded_count,
                    CASE WHEN m.name = 'quiz' THEN COALESCE(qa.attempted_count, 0) ELSE NULL END AS attempted_count
@@ -679,37 +735,74 @@ class Cp_etl_model extends CI_Model
 
     private function etl_student_quiz_detail()
     {
+        $this->db->query('TRUNCATE TABLE cp_student_quiz_detail');
         $sql = "
             INSERT INTO cp_student_quiz_detail (quiz_id, user_id, nim, full_name, waktu_mulai, waktu_selesai, durasi_waktu, jumlah_soal, jumlah_dikerjakan, nilai)
-            SELECT qa.quiz AS quiz_id,
-                   qa.userid AS user_id,
-                   uid.idnumber AS nim,
-                   TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
-                   FROM_UNIXTIME(qa.timestart) AS waktu_mulai,
-                   FROM_UNIXTIME(qa.timefinish) AS waktu_selesai,
-                   CASE WHEN qa.timefinish > 0 AND qa.timestart > 0 THEN SEC_TO_TIME(qa.timefinish - qa.timestart) ELSE NULL END AS durasi_waktu,
-                   qs.num_questions AS jumlah_soal,
-                   NULL AS jumlah_dikerjakan,
-                   qasum.grade AS nilai
-            FROM {$this->moodleDbName}.mdl_quiz_attempts qa
-            JOIN {$this->moodleDbName}.mdl_user u ON u.id = qa.userid
-            LEFT JOIN (
-                SELECT d.userid, d.data AS idnumber
-                FROM {$this->moodleDbName}.mdl_user_info_data d
-                JOIN {$this->moodleDbName}.mdl_user_info_field f ON f.id = d.fieldid
-                WHERE LOWER(f.shortname) IN ('idnumber','nim','npm')
-            ) uid ON uid.userid = u.id
+            SELECT
+                l.contextinstanceid AS quiz_id,
+                l.userid AS user_id,
+                uid.idnumber AS nim,
+                TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
+                FROM_UNIXTIME(qa.timestart) AS waktu_mulai,
+                FROM_UNIXTIME(qa.timefinish) AS waktu_selesai,
+                CASE WHEN qa.timefinish > 0 AND qa.timestart > 0 THEN SEC_TO_TIME(qa.timefinish - qa.timestart) ELSE NULL END AS durasi_waktu,
+                qs.num_questions AS jumlah_soal,
+                NULL AS jumlah_dikerjakan,
+                qasum.grade AS nilai
+            FROM
+                {$this->moodleDbName}.mdl_logstore_standard_log l
             JOIN (
-                SELECT quizid AS quiz, COUNT(*) AS num_questions
-                FROM {$this->moodleDbName}.mdl_quiz_slots
-                GROUP BY quizid
-            ) qs ON qs.quiz = qa.quiz
+                SELECT
+                    MIN(id) AS min_id
+                FROM
+                    {$this->moodleDbName}.mdl_logstore_standard_log
+                WHERE
+                    component = 'mod_quiz'
+                GROUP BY
+                    userid, contextinstanceid, action
+            ) l_min ON l.id = l_min.min_id
+            JOIN
+                {$this->moodleDbName}.mdl_course_modules cm ON cm.id = l.contextinstanceid
+            LEFT JOIN
+                {$this->moodleDbName}.mdl_quiz_attempts qa ON qa.quiz = cm.instance AND qa.userid = l.userid
+            JOIN
+                {$this->moodleDbName}.mdl_user u ON u.id = l.userid
+            JOIN
+                {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'quiz'
             LEFT JOIN (
-                SELECT gi.iteminstance AS quizid, g.finalgrade AS grade, g.userid
-                FROM {$this->moodleDbName}.mdl_grade_items gi
-                JOIN {$this->moodleDbName}.mdl_grade_grades g ON g.itemid = gi.id
-                WHERE gi.itemtype = 'mod' AND gi.itemmodule = 'quiz'
-            ) qasum ON qasum.quizid = qa.quiz AND qasum.userid = qa.userid
+                SELECT
+                    d.userid,
+                    d.data AS idnumber
+                FROM
+                    {$this->moodleDbName}.mdl_user_info_data d
+                JOIN
+                    {$this->moodleDbName}.mdl_user_info_field f ON f.id = d.fieldid
+                WHERE
+                    LOWER(f.shortname) IN ('idnumber','nim','npm')
+            ) uid ON uid.userid = u.id
+            LEFT JOIN (
+                SELECT
+                    quizid AS quiz,
+                    COUNT(*) AS num_questions
+                FROM
+                    {$this->moodleDbName}.mdl_quiz_slots
+                GROUP BY
+                    quizid
+            ) qs ON qs.quiz = cm.instance
+            LEFT JOIN (
+                SELECT
+                    gi.iteminstance AS quizid,
+                    g.finalgrade AS grade,
+                    g.userid
+                FROM
+                    {$this->moodleDbName}.mdl_grade_items gi
+                JOIN
+                    {$this->moodleDbName}.mdl_grade_grades g ON g.itemid = gi.id
+                WHERE
+                    gi.itemtype = 'mod' AND gi.itemmodule = 'quiz'
+            ) qasum ON qasum.quizid = cm.instance AND qasum.userid = l.userid
+            WHERE
+                l.action = 'viewed'
         ";
         $this->db->query($sql);
         return $this->db->affected_rows();
@@ -728,6 +821,9 @@ class Cp_etl_model extends CI_Model
                    g.finalgrade AS nilai
             FROM {$this->moodleDbName}.mdl_assign_submission s
             JOIN {$this->moodleDbName}.mdl_user u ON u.id = s.userid
+            JOIN {$this->moodleDbName}.mdl_course_modules cm ON cm.instance = s.assignment AND cm.module IN (1,18,19)
+            JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'assign'
+            JOIN {$this->moodleDbName}.mdl_logstore_standard_log l ON l.contextinstanceid = cm.id AND l.userid = s.userid AND l.component = 'mod_assign'
             LEFT JOIN (
                 SELECT d.userid, d.data AS idnumber
                 FROM {$this->moodleDbName}.mdl_user_info_data d
@@ -758,6 +854,8 @@ class Cp_etl_model extends CI_Model
                    FROM_UNIXTIME(l.timecreated) AS waktu_akses
             FROM {$this->moodleDbName}.mdl_logstore_standard_log l
             JOIN {$this->moodleDbName}.mdl_user u ON u.id = l.userid
+            JOIN {$this->moodleDbName}.mdl_course_modules cm ON cm.id = l.contextinstanceid AND cm.module IN (1,18,19)
+            JOIN {$this->moodleDbName}.mdl_modules m ON m.id = cm.module AND m.name = 'resource'
             LEFT JOIN (
                 SELECT d.userid, d.data AS idnumber
                 FROM {$this->moodleDbName}.mdl_user_info_data d

@@ -40,8 +40,9 @@ class etl_cp extends REST_Controller {
 			// Spawn background CP backfill
 			$php = 'php';
 			$index = APPPATH . '../index.php';
-			$cmd = $php . ' ' . $index . ' cli run_cp_backfill ' . escapeshellarg($start_date) . ' ' . $concurrency . ' ' . (int)$log_id . ' > /dev/null 2>&1 &';
-			log_message('info', 'Spawned CP backfill: ' . $cmd);
+			$log_file = APPPATH . 'logs/cp_etl_' . date('Y-m-d_H-i-s') . '_' . $log_id . '.log';
+			$cmd = $php . ' ' . $index . ' cli run_cp_backfill ' . escapeshellarg($start_date) . ' ' . $concurrency . ' ' . (int)$log_id . ' > ' . $log_file . ' 2>&1 &';
+			log_message('info', 'Spawned CP backfill: ' . $cmd . ' (log: ' . $log_file . ')');
 			exec($cmd);
 
 			$this->response([
