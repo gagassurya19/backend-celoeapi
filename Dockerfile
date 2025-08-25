@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libicu-dev \
     default-mysql-client \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/* \
     && docker-php-ext-configure gd \
         --with-freetype \

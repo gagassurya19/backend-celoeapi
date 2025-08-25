@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   celoeapi:
@@ -6,26 +6,12 @@ services:
     ports:
       - "8081:80"
     environment:
-      # Environment untuk production
-      - CI_ENV=production
-      # Database celoeapi (akan dibuat otomatis)
-      - CELOEAPI_DB_HOST=host.docker.internal
-      - CELOEAPI_DB_PORT=3306
-      - CELOEAPI_DB_USER=moodleuser
-      - CELOEAPI_DB_PASS=moodlepass
-      - CELOEAPI_DB_NAME=celoeapi
-      # Database Moodle yang sudah ada (native MySQL)
-      - MOODLE_DB_HOST=host.docker.internal
-      - MOODLE_DB_PORT=3306
-      - MOODLE_DB_USER=moodleuser
-      - MOODLE_DB_PASS=moodlepass
-      - MOODLE_DB_NAME=moodle
+      # Environment untuk development
+      - CI_ENV=development
     volumes:
       - .:/var/www/html
       - ./setup-swagger-auto.sh:/var/www/html/setup-swagger-auto.sh
     restart: unless-stopped
-    # Gunakan host network untuk access ke native MySQL
-    network_mode: "host"
-    # Extra hosts untuk cross-platform compatibility
+    # Gunakan extra_hosts untuk akses ke host machine
     extra_hosts:
       - "host.docker.internal:host-gateway"

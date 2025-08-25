@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   web:
@@ -24,6 +24,21 @@ services:
       - ./celoeapi-dev:/var/www/html
       - ./setup-celoeapi.sh:/var/www/html/setup-celoeapi.sh
       - ./celoeapi-dev/etl_database_schema.sql:/var/www/html/etl_database_schema.sql
+    environment:
+      # External Moodle database configuration (for local XAMPP connection)
+      # ACTIVE: Connect to your local XAMPP Moodle database
+      EXTERNAL_MOODLE_HOST: host.docker.internal # For Windows/Mac Docker Desktop
+      EXTERNAL_MOODLE_USER: root
+      EXTERNAL_MOODLE_PASS: ""
+      EXTERNAL_MOODLE_DB: moodle
+      EXTERNAL_MOODLE_PORT: 3306
+
+      # Alternative configurations (comment out EXTERNAL_* above to use these):
+      # For Linux Docker:
+      # EXTERNAL_MOODLE_HOST: 172.17.0.1
+
+      # Or set to true to use local Moodle when running CeloeAPI outside Docker:
+      # USE_LOCAL_MOODLE_DB: "true"
     depends_on:
       db:
         condition: service_healthy
@@ -49,7 +64,17 @@ services:
     networks:
       - moodle
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "moodleuser", "-pmoodlepass"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "moodleuser",
+          "-pmoodlepass",
+        ]
       timeout: 20s
       retries: 10
       interval: 10s
@@ -61,4 +86,3 @@ volumes:
 networks:
   moodle:
     driver: bridge
-  
