@@ -1872,4 +1872,174 @@ class Cli extends CI_Controller {
         }
     }
 
+    /**
+     * Run SAS ETL process (users sync + login hourly detection)
+     * Usage: php index.php cli run_sas_etl [date]
+     */
+    public function run_sas_etl($extraction_date = null) {
+        try {
+            if (!$extraction_date) {
+                $extraction_date = date('Y-m-d');
+            }
+            
+            echo "=== Running SAS ETL Process ===\n";
+            echo "Date: " . $extraction_date . "\n";
+            echo "Time: " . date('Y-m-d H:i:s') . "\n";
+            echo "Current Hour: " . date('G') . "\n\n";
+
+            $this->load->model('sas_users_etl_model', 'm_users');
+            $this->load->model('sas_user_login_hourly_model', 'm_login_hourly');
+            
+            // Initialize log_id variable
+            $log_id = null;
+            
+            // Create single log entry with 'running' status
+            $log_data = [
+                'process_name' => 'sas_etl_complete',
+                'status' => 'running',
+                'message' => 'Starting SAS ETL process (users + login hourly)',
+                'extraction_date' => $extraction_date,
+                'start_time' => date('Y-m-d H:i:s'),
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $this->db->insert('sas_users_login_etl_logs', $log_data);
+            $log_id = $this->db->insert_id();
+            
+            // Step 1: Sync Users (users, roles, enrolments) - HARUS DULUAN
+            echo "Step 1: Syncing Users (users, roles, enrolments)...\n";
+            $users_result = $this->m_users->run_complete_users_etl($extraction_date);
+            
+            if (!$users_result['success']) {
+                // Update log to failed status
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'Users ETL failed: ' . $users_result['error'],
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                
+                throw new Exception('Users ETL failed: ' . $users_result['error']);
+            }
+            
+            echo "✅ Users sync completed successfully\n";
+            echo "   Users: " . $users_result['results']['users']['extracted_count'] . " extracted, " . $users_result['results']['users']['inserted_count'] . " inserted\n";
+            echo "   Roles: " . $users_result['results']['roles']['extracted_count'] . " extracted, " . $users_result['results']['roles']['inserted_count'] . " inserted\n";
+            echo "   Enrolments: " . $users_result['results']['enrolments']['extracted_count'] . " extracted, " . $users_result['results']['enrolments']['inserted_count'] . " inserted\n";
+            
+            // Step 2: Detect Login Hourly Activity (Combined ETL + Real-time)
+            echo "\nStep 2: Detecting Login Hourly Activity (Combined ETL + Real-time)...\n";
+            $hourly_result = $this->m_login_hourly->run_complete_user_login_hourly_etl($extraction_date);
+            
+            if (!$hourly_result['success']) {
+                // Update log to failed status
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'Login Hourly ETL failed: ' . $hourly_result['error'],
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                
+                throw new Exception('Login Hourly ETL failed: ' . $hourly_result['error']);
+            }
+            
+            echo "✅ Login hourly detection completed successfully\n";
+            echo "   Extracted: " . $hourly_result['extracted'] . " hourly records\n";
+            echo "   Inserted: " . $hourly_result['inserted'] . " new records\n";
+            echo "   Updated: " . $hourly_result['updated'] . " existing records\n";
+            echo "   Real-time: " . $hourly_result['realtime_processed'] . " users processed\n";
+            echo "   Current Hour: " . $hourly_result['current_hour'] . "\n";
+            
+            // Step 3: Get busiest hours analysis for chart data
+            echo "\nStep 3: Analyzing Busiest Hours for Chart Data...\n";
+            $busiest_hours = $this->m_login_hourly->get_busiest_hours_analysis($extraction_date);
+            
+            echo "📊 Busiest Hours Analysis:\n";
+            echo "   Total Teachers: " . $busiest_hours['summary']['total_teachers'] . "\n";
+            echo "   Total Students: " . $busiest_hours['summary']['total_students'] . "\n";
+            echo "   Total Activities: " . $busiest_hours['summary']['total_activities'] . "\n";
+            
+            if (!empty($busiest_hours['overall_hours'])) {
+                echo "   Top 3 Busiest Hours:\n";
+                foreach (array_slice($busiest_hours['overall_hours'], 0, 3) as $i => $hour) {
+                    echo "     " . ($i+1) . ". Hour " . sprintf('%02d:00', $hour['hour']) . 
+                         " - " . $hour['unique_users'] . " users, " . $hour['total_activities'] . " activities\n";
+                }
+            }
+            
+            // Step 4: Get detailed hourly data for charts
+            echo "\nStep 4: Getting Detailed Hourly Data for Charts...\n";
+            $hourly_chart_data = $this->m_login_hourly->get_hourly_chart_data($extraction_date);
+            
+            echo "📈 Chart Data Summary:\n";
+            echo "   Hours with data: " . count(array_filter($hourly_chart_data, function($h) { return $h['total_activities'] > 0; })) . "\n";
+            echo "   Total data points: " . array_sum(array_column($hourly_chart_data, 'total_activities')) . "\n";
+            
+            // Step 5: Get final summary
+            echo "\nStep 5: Getting Final Activity Summary...\n";
+            $final_summary = $this->m_login_hourly->get_realtime_activity_summary($extraction_date);
+            
+            echo "📊 Final Activity Summary for " . $extraction_date . ":\n";
+            echo "   Total Unique Users: " . $final_summary['total_unique_users'] . "\n";
+            echo "   Total Activities: " . $final_summary['total_activities'] . "\n";
+            
+            if (!empty($final_summary['role_breakdown'])) {
+                echo "   Role Breakdown:\n";
+                foreach ($final_summary['role_breakdown'] as $role => $data) {
+                    echo "     " . ucfirst($role) . ": " . $data['users'] . " users, " . $data['activities'] . " activities\n";
+                }
+            }
+            
+            // Update log to completed status with final results
+            $this->db->where('id', $log_id);
+            $this->db->update('sas_users_login_etl_logs', [
+                'status' => 'completed',
+                'message' => 'SAS ETL process completed successfully',
+                'end_time' => date('Y-m-d H:i:s'),
+                'duration_seconds' => time() - strtotime($log_data['start_time']),
+                'extracted_count' => $users_result['results']['users']['extracted_count'] + $hourly_result['extracted'],
+                'inserted_count' => $users_result['results']['users']['inserted_count'] + $hourly_result['inserted'],
+                'updated_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            echo "\n🎯 SAS ETL process completed successfully!\n";
+            echo "   All data saved to sas_users_login_etl_logs table (1 log entry)\n";
+            echo "   Ready for scheduler/cronjob integration (per menit)\n";
+            echo "   User roles and enrolments properly saved\n";
+            echo "   Chart data ready for visualization\n";
+            
+            return [
+                'success' => true,
+                'extraction_date' => $extraction_date,
+                'log_id' => $log_id,
+                'users_etl' => $users_result,
+                'hourly_etl' => $hourly_result,
+                'busiest_hours' => $busiest_hours,
+                'hourly_chart_data' => $hourly_chart_data,
+                'final_summary' => $final_summary
+            ];
+            
+        } catch (Exception $e) {
+            echo "❌ SAS ETL failed: " . $e->getMessage() . "\n";
+            log_message('error', 'CLI SAS ETL failed: ' . $e->getMessage());
+            
+            // Ensure log is updated to failed even if an exception occurs
+            if (isset($log_id)) {
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'SAS ETL process failed: ' . $e->getMessage(),
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            }
+            exit(1);
+        }
+    }
 } 
