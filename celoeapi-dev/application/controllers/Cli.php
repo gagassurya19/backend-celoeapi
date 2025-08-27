@@ -1890,6 +1890,34 @@ class Cli extends CI_Controller {
             $this->load->model('sas_users_etl_model', 'm_users');
             $this->load->model('sas_user_login_hourly_model', 'm_login_hourly');
             
+            // Check if data already exists for this extraction date
+            echo "🔍 Checking if data already exists for date: $extraction_date\n";
+            
+            $existing_users = $this->db->query("SELECT COUNT(*) as count FROM sas_users_etl WHERE extraction_date = ?", [$extraction_date])->row()->count;
+            $existing_roles = $this->db->query("SELECT COUNT(*) as count FROM sas_user_roles_etl WHERE extraction_date = ?", [$extraction_date])->row()->count;
+            $existing_enrolments = $this->db->query("SELECT COUNT(*) as count FROM sas_user_enrolments_etl WHERE extraction_date = ?", [$extraction_date])->row()->count;
+            $existing_hourly = $this->db->query("SELECT COUNT(*) as count FROM sas_user_login_hourly WHERE extraction_date = ?", [$extraction_date])->row()->count;
+            
+            echo "   Existing data found:\n";
+            echo "   - Users: $existing_users records\n";
+            echo "   - Roles: $existing_roles records\n";
+            echo "   - Enrolments: $existing_enrolments records\n";
+            echo "   - Login Hourly: $existing_hourly records\n";
+            
+            // If data already exists, ask user if they want to continue
+            if ($existing_users > 0 || $existing_roles > 0 || $existing_enrolments > 0 || $existing_hourly > 0) {
+                echo "\n⚠️  WARNING: Data already exists for date $extraction_date!\n";
+                echo "   Continuing will update existing records instead of creating duplicates.\n";
+                echo "   Press Enter to continue or Ctrl+C to abort...\n";
+                
+                // Wait for user input (CLI only)
+                if ($this->input->is_cli_request()) {
+                    $handle = fopen("php://stdin", "r");
+                    fgets($handle);
+                    fclose($handle);
+                }
+            }
+            
             // Initialize log_id variable
             $log_id = null;
             
@@ -1955,45 +1983,9 @@ class Cli extends CI_Controller {
             echo "   Real-time: " . $hourly_result['realtime_processed'] . " users processed\n";
             echo "   Current Hour: " . $hourly_result['current_hour'] . "\n";
             
-            // Step 3: Get busiest hours analysis for chart data
-            echo "\nStep 3: Analyzing Busiest Hours for Chart Data...\n";
-            $busiest_hours = $this->m_login_hourly->get_busiest_hours_analysis($extraction_date);
-            
-            echo "📊 Busiest Hours Analysis:\n";
-            echo "   Total Teachers: " . $busiest_hours['summary']['total_teachers'] . "\n";
-            echo "   Total Students: " . $busiest_hours['summary']['total_students'] . "\n";
-            echo "   Total Activities: " . $busiest_hours['summary']['total_activities'] . "\n";
-            
-            if (!empty($busiest_hours['overall_hours'])) {
-                echo "   Top 3 Busiest Hours:\n";
-                foreach (array_slice($busiest_hours['overall_hours'], 0, 3) as $i => $hour) {
-                    echo "     " . ($i+1) . ". Hour " . sprintf('%02d:00', $hour['hour']) . 
-                         " - " . $hour['unique_users'] . " users, " . $hour['total_activities'] . " activities\n";
-                }
-            }
-            
-            // Step 4: Get detailed hourly data for charts
-            echo "\nStep 4: Getting Detailed Hourly Data for Charts...\n";
-            $hourly_chart_data = $this->m_login_hourly->get_hourly_chart_data($extraction_date);
-            
-            echo "📈 Chart Data Summary:\n";
-            echo "   Hours with data: " . count(array_filter($hourly_chart_data, function($h) { return $h['total_activities'] > 0; })) . "\n";
-            echo "   Total data points: " . array_sum(array_column($hourly_chart_data, 'total_activities')) . "\n";
-            
-            // Step 5: Get final summary
-            echo "\nStep 5: Getting Final Activity Summary...\n";
-            $final_summary = $this->m_login_hourly->get_realtime_activity_summary($extraction_date);
-            
-            echo "📊 Final Activity Summary for " . $extraction_date . ":\n";
-            echo "   Total Unique Users: " . $final_summary['total_unique_users'] . "\n";
-            echo "   Total Activities: " . $final_summary['total_activities'] . "\n";
-            
-            if (!empty($final_summary['role_breakdown'])) {
-                echo "   Role Breakdown:\n";
-                foreach ($final_summary['role_breakdown'] as $role => $data) {
-                    echo "     " . ucfirst($role) . ": " . $data['users'] . " users, " . $data['activities'] . " activities\n";
-                }
-            }
+            // Step 3: Process completed - No additional analysis needed
+            echo "\nStep 3: Process completed successfully\n";
+            echo "✅ All ETL processes completed\n";
             
             // Update log to completed status with final results
             $this->db->where('id', $log_id);
@@ -2011,17 +2003,14 @@ class Cli extends CI_Controller {
             echo "   All data saved to sas_users_login_etl_logs table (1 log entry)\n";
             echo "   Ready for scheduler/cronjob integration (per menit)\n";
             echo "   User roles and enrolments properly saved\n";
-            echo "   Chart data ready for visualization\n";
+            echo "   Data ready for API consumption\n";
             
             return [
                 'success' => true,
                 'extraction_date' => $extraction_date,
                 'log_id' => $log_id,
                 'users_etl' => $users_result,
-                'hourly_etl' => $hourly_result,
-                'busiest_hours' => $busiest_hours,
-                'hourly_chart_data' => $hourly_chart_data,
-                'final_summary' => $final_summary
+                'hourly_etl' => $hourly_result
             ];
             
         } catch (Exception $e) {

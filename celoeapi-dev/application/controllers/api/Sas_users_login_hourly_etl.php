@@ -14,7 +14,7 @@ class Sas_users_login_hourly_etl extends CI_Controller {
     }
 
     /**
-     * Run SAS ETL process via API
+     * Run SAS ETL process via API - Simplified for synchronization only
      * POST /api/sas_users_login_hourly_etl/run
      */
     public function run() {
@@ -97,11 +97,6 @@ class Sas_users_login_hourly_etl extends CI_Controller {
                     ], 500);
                 }
 
-                // Step 3: Get additional data for response
-                $busiest_hours = $this->m_login_hourly->get_busiest_hours_analysis($extraction_date);
-                $hourly_chart_data = $this->m_login_hourly->get_hourly_chart_data($extraction_date);
-                $final_summary = $this->m_login_hourly->get_realtime_activity_summary($extraction_date);
-
                 // Update log to completed status
                 $this->db->where('id', $log_id);
                 $this->db->update('sas_users_login_etl_logs', [
@@ -122,9 +117,6 @@ class Sas_users_login_hourly_etl extends CI_Controller {
                         'log_id' => $log_id,
                         'users_etl' => $users_result,
                         'hourly_etl' => $hourly_result,
-                        'busiest_hours' => $busiest_hours,
-                        'hourly_chart_data' => $hourly_chart_data,
-                        'final_summary' => $final_summary,
                         'timestamp' => date('Y-m-d H:i:s')
                     ]
                 ], 200);
@@ -150,8 +142,7 @@ class Sas_users_login_hourly_etl extends CI_Controller {
         } catch (Exception $e) {
             return $this->json_response([
                 'success' => false,
-                'error' => 'Exception occurred: ' . $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => 'Exception occurred: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -254,54 +245,7 @@ class Sas_users_login_hourly_etl extends CI_Controller {
         }
     }
 
-    /**
-     * Get specific log by ID
-     * GET /api/sas_users_login_hourly_etl/logs/{id}
-     */
-    public function log($id = null) {
-        try {
-            if (!$id) {
-                return $this->json_response([
-                    'success' => false,
-                    'error' => 'Log ID is required'
-                ], 400);
-            }
-            
-            $log = $this->db->get_where('sas_users_login_etl_logs', ['id' => $id])->row_array();
-            
-            if (!$log) {
-                return $this->json_response([
-                    'success' => false,
-                    'error' => 'Log not found',
-                    'id' => $id
-                ], 404);
-            }
-            
-            // Format timestamps
-            $log['created_at_formatted'] = date('Y-m-d H:i:s', strtotime($log['created_at']));
-            $log['updated_at_formatted'] = date('Y-m-d H:i:s', strtotime($log['updated_at']));
-            
-            if ($log['start_time']) {
-                $log['start_time_formatted'] = date('Y-m-d H:i:s', strtotime($log['start_time']));
-            }
-            
-            if ($log['end_time']) {
-                $log['end_time_formatted'] = date('Y-m-d H:i:s', strtotime($log['end_time']));
-            }
-            
-            return $this->json_response([
-                'success' => true,
-                'data' => $log
-            ], 200);
-            
-        } catch (Exception $e) {
-            return $this->json_response([
-                'success' => false,
-                'error' => 'Exception occurred: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
+   
     /**
      * Get ETL status summary
      * GET /api/sas_users_login_hourly_etl/status
@@ -370,30 +314,54 @@ class Sas_users_login_hourly_etl extends CI_Controller {
     }
 
     /**
-     * Get chart data for dashboard
-     * GET /api/sas_users_login_hourly_etl/chart_data
+     * Get login hourly data with pagination and relations
+     * GET /api/sas_users_login_hourly_etl/login_hourly
      */
-    public function chart_data() {
+    public function login_hourly() {
         try {
-            $date = $this->input->get('date') ?: date('Y-m-d');
+            // Get query parameters
+            $page = (int) ($this->input->get('page') ?: 1);
+            $limit = (int) ($this->input->get('limit') ?: 10);
+            $search = $this->input->get('search') ?: '';
+            $extraction_date = $this->input->get('extraction_date') ?: date('Y-m-d');
+            $hour = $this->input->get('hour');
+            $role_type = $this->input->get('role_type');
+            $is_active = $this->input->get('is_active');
             
-            // Get hourly chart data
-            $hourly_data = $this->m_login_hourly->get_hourly_chart_data($date);
+            // Validate parameters
+            if ($page < 1) $page = 1;
+            if ($limit < 1) $limit = 10;
             
-            // Get busiest hours analysis
-            $busiest_hours = $this->m_login_hourly->get_busiest_hours_analysis($date);
+            // Build filters
+            $filters = [
+                'extraction_date' => $extraction_date
+            ];
             
-            // Get real-time summary for current hour
-            $current_summary = $this->m_login_hourly->get_realtime_activity_summary($date);
+            if ($hour !== null && $hour !== '') {
+                $filters['hour'] = $hour;
+            }
+            
+            if ($role_type !== null && $role_type !== '') {
+                $filters['role_type'] = $role_type;
+            }
+            
+            if ($is_active !== null && $is_active !== '') {
+                $filters['is_active'] = $is_active;
+            }
+            
+            // Get data from model
+            $result = $this->m_login_hourly->get_login_hourly_with_relations($page, $limit, $search, $filters);
             
             return $this->json_response([
                 'success' => true,
-                'data' => [
-                    'date' => $date,
-                    'hourly_chart_data' => $hourly_data,
-                    'busiest_hours' => $busiest_hours,
-                    'current_hour_summary' => $current_summary,
-                    'timestamp' => date('Y-m-d H:i:s')
+                'data' => $result['data'],
+                'pagination' => $result['pagination'],
+                'filters' => [
+                    'search' => $search,
+                    'extraction_date' => $extraction_date,
+                    'hour' => $hour,
+                    'role_type' => $role_type,
+                    'is_active' => $is_active
                 ]
             ], 200);
             
