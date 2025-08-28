@@ -20,6 +20,10 @@ class etl_cp extends REST_Controller {
 
 			if (!$start_date) { $start_date = date('Y-m-d', strtotime('-7 days')); }
 			if (!$end_date) { $end_date = date('Y-m-d', strtotime('-1 day')); }
+
+			// Normalize dates like 2025-02-7 -> 2025-02-07 before validation
+			$start_date = $this->_normalize_date($start_date);
+			$end_date = $this->_normalize_date($end_date);
 			if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) {
 				throw new Exception('Invalid date format. Use YYYY-MM-DD');
 			}
@@ -32,7 +36,7 @@ class etl_cp extends REST_Controller {
 			$sql = "INSERT INTO cp_etl_logs (offset, numrow, type, message, requested_start_date, status, start_date)
 					VALUES (0,0,'run_cp_backfill', ?, ?, 2, NOW())";
 			$this->db->query($sql, [
-				json_encode(['concurrency' => $concurrency]),
+				json_encode(['concurrency' => $concurrency, 'end_date' => $end_date]),
 				$start_date
 			]);
 			$log_id = $this->db->insert_id();
@@ -41,7 +45,7 @@ class etl_cp extends REST_Controller {
 			$php = 'php';
 			$index = APPPATH . '../index.php';
 			$log_file = APPPATH . 'logs/cp_etl_' . date('Y-m-d_H-i-s') . '_' . $log_id . '.log';
-			$cmd = $php . ' ' . $index . ' cli run_cp_backfill ' . escapeshellarg($start_date) . ' ' . $concurrency . ' ' . (int)$log_id . ' > ' . $log_file . ' 2>&1 &';
+			$cmd = $php . ' ' . $index . ' cli run_cp_backfill ' . escapeshellarg($start_date) . ' ' . escapeshellarg($end_date) . ' ' . $concurrency . ' ' . (int)$log_id . ' > ' . $log_file . ' 2>&1 &';
 			log_message('info', 'Spawned CP backfill: ' . $cmd . ' (log: ' . $log_file . ')');
 			exec($cmd);
 
@@ -60,6 +64,22 @@ class etl_cp extends REST_Controller {
 				'error' => $e->getMessage()
 			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Normalize a date string into YYYY-MM-DD when possible.
+	 */
+	private function _normalize_date($date)
+	{
+		if (empty($date)) { return $date; }
+		// Accept inputs like YYYY-M-D and convert to YYYY-MM-DD
+		if (preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $date)) {
+			$ts = strtotime($date);
+			if ($ts !== false) {
+				return date('Y-m-d', $ts);
+			}
+		}
+		return $date;
 	}
 
 	// POST /api/etl_cp/clean - bersihkan semua data CP (tanpa menghapus cp_etl_logs)

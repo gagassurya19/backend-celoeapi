@@ -66,16 +66,36 @@ class Cli extends CI_Controller {
      * Run CP backfill from start_date with optional concurrency
      * Usage: php index.php cli run_cp_backfill 2025-01-01 4
      */
-    public function run_cp_backfill($start_date = null, $concurrency = 1, $log_id = null)
+    public function run_cp_backfill($start_date = null, $maybe_end_or_conc = null, $maybe_conc_or_log = null, $log_id = null)
     {
         try {
             if (!$start_date) {
                 throw new Exception('start_date (YYYY-MM-DD) is required');
             }
-            $conc = intval($concurrency ?: 1);
-            echo "Starting CP backfill from $start_date with concurrency=$conc...\n";
+            // Backward compatible args:
+            // php index.php cli run_cp_backfill <start_date> [<end_date>|<concurrency>] [<concurrency>|<log_id>] [<log_id>]
+            $end_date = null;
+            $conc = 1;
+            // Detect if 2nd arg is a date
+            if ($maybe_end_or_conc && preg_match('/^\d{4}-\d{2}-\d{2}$/', $maybe_end_or_conc)) {
+                $end_date = $maybe_end_or_conc;
+                // 3rd could be concurrency
+                if ($maybe_conc_or_log !== null && is_numeric($maybe_conc_or_log)) {
+                    $conc = intval($maybe_conc_or_log);
+                }
+            } else if ($maybe_end_or_conc !== null) {
+                // 2nd is concurrency
+                $conc = intval($maybe_end_or_conc);
+            }
+            // Last param may be log_id
+            if ($log_id === null && $maybe_conc_or_log !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$maybe_conc_or_log) && is_numeric($maybe_conc_or_log)) {
+                $log_id = $maybe_conc_or_log;
+            }
+
+            $conc = intval($conc ?: 1);
+            echo "Starting CP backfill from $start_date" . ($end_date ? " to $end_date" : "") . " with concurrency=$conc...\n";
             $this->load->model('cp_etl_model', 'm_cp');
-            $result = $this->m_cp->run_backfill_from_date($start_date, $conc, $log_id ? intval($log_id) : null);
+            $result = $this->m_cp->run_backfill_from_date($start_date, $conc, $log_id ? intval($log_id) : null, $end_date);
             echo "CP backfill completed. Days: " . $result['processed_days'] . ", Inserted: " . $result['inserted_total'] . ", Concurrency: " . $result['concurrency'] . "\n";
         } catch (Exception $e) {
             echo "CP backfill failed: " . $e->getMessage() . "\n";
@@ -263,14 +283,26 @@ class Cli extends CI_Controller {
      * Run SAS ETL from a start date to catch up to yesterday with concurrency
      * Usage: php index.php cli run_student_activity_from_start 2024-01-01 2
      */
-    public function run_student_activity_from_start($start_date = null, $concurrency = 1)
+    public function run_student_activity_from_start($start_date = null, $maybe_end_or_conc = null, $maybe_conc = null)
     {
         try {
             if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) {
                 throw new Exception('start_date (YYYY-MM-DD) is required');
             }
 
-            $target_date = date('Y-m-d', strtotime('-1 day'));
+            // Support optional end_date argument (backward compatible)
+            $end_date = null;
+            $concurrency = 1;
+            if ($maybe_end_or_conc && preg_match('/^\d{4}-\d{2}-\d{2}$/', $maybe_end_or_conc)) {
+                $end_date = $maybe_end_or_conc;
+                if ($maybe_conc !== null && is_numeric($maybe_conc)) {
+                    $concurrency = intval($maybe_conc);
+                }
+            } else if ($maybe_end_or_conc !== null) {
+                $concurrency = intval($maybe_end_or_conc);
+            }
+
+            $target_date = $end_date ?: date('Y-m-d', strtotime('-1 day'));
             if (strtotime($start_date) > strtotime($target_date)) {
                 echo "Nothing to process.\n";
                 return;

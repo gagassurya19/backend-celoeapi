@@ -40,6 +40,9 @@ class etl_sas extends REST_Controller {
 				$end_date = date('Y-m-d', strtotime('-1 day'));
 			}
 
+			// Normalize dates like 2025-02-7 -> 2025-02-07 before validation
+			$start_date = $this->_normalize_date($start_date);
+			$end_date = $this->_normalize_date($end_date);
 			if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) {
 				throw new Exception('Invalid date format. Use YYYY-MM-DD format.');
 			}
@@ -136,6 +139,21 @@ class etl_sas extends REST_Controller {
 		}
 	}
 
+	/**
+	 * Normalize a date string into YYYY-MM-DD when possible.
+	 */
+	private function _normalize_date($date)
+	{
+		if (empty($date)) { return $date; }
+		if (preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $date)) {
+			$ts = strtotime($date);
+			if ($ts !== false) {
+				return date('Y-m-d', $ts);
+			}
+		}
+		return $date;
+	}
+
 	// Background helpers
 	private function _run_sas_catchup_background($start_date, $end_date = null, $concurrency = 1)
 	{
@@ -143,10 +161,11 @@ class etl_sas extends REST_Controller {
 			$php = 'php';
 			$index = APPPATH . '../index.php';
 			$concurrency = (int)$concurrency ?: 1;
+			$endArg = $end_date ? (' ' . escapeshellarg($end_date)) : '';
 			if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-				$cmd = 'start /B ' . $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . ' ' . $concurrency . ' > nul 2>&1';
+				$cmd = 'start /B ' . $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . ' > nul 2>&1';
 			} else {
-				$cmd = $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . ' ' . $concurrency . ' > /dev/null 2>&1 &';
+				$cmd = $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . ' > /dev/null 2>&1 &';
 			}
 			exec($cmd);
 			log_message('info', 'Spawned SAS catch-up: ' . $cmd);

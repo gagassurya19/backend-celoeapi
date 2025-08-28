@@ -493,7 +493,14 @@ function generate_request_body($method_name, $content) {
 									'format' => 'date',
 									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
 									'description' => 'Start date for ETL processing (YYYY-MM-DD format)',
-									'example' => '2024-01-01'
+									'example' => '2025-02-03'
+								],
+								'end_date' => [
+									'type' => 'string',
+									'format' => 'date',
+									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+									'description' => 'End date for ETL processing (YYYY-MM-DD format)',
+									'example' => '2025-02-07'
 								],
 								'concurrency' => [
 									'type' => 'integer',
@@ -501,7 +508,8 @@ function generate_request_body($method_name, $content) {
 									'description' => 'Number of concurrent workers (pcntl) for backfill',
 									'example' => 4
 								]
-							]
+							],
+							'additionalProperties' => false
 						]
 					]
 				]

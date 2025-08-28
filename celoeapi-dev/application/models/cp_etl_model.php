@@ -178,7 +178,7 @@ class Cp_etl_model extends CI_Model
      * - Processes per-day chunks for efficiency on large datasets
      * - Optionally runs concurrently if pcntl is available
      */
-    public function run_backfill_from_date($startDate, $maxConcurrency = 1, $existingLogId = null)
+    public function run_backfill_from_date($startDate, $maxConcurrency = 1, $existingLogId = null, $endDate = null)
     {
         if (!$startDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)) {
             throw new Exception('Invalid start_date. Use YYYY-MM-DD');
@@ -198,7 +198,8 @@ class Cp_etl_model extends CI_Model
         }
 
         $startTs = strtotime($startDate);
-        $endTs = strtotime(date('Y-m-d')); // up to today (exclusive)
+        $computedEnd = $endDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate) ? $endDate : date('Y-m-d');
+        $endTs = strtotime($computedEnd); // inclusive window end marker used for logging
         if ($startTs === false || $startTs > $endTs) {
             throw new Exception('Invalid date range');
         }
@@ -207,6 +208,7 @@ class Cp_etl_model extends CI_Model
         $this->seed_student_profiles();
         $this->etl_student_quiz_detail();
         $dates = [];
+        // Build processing dates. If endDate provided, limit to it; otherwise go until today.
         for ($ts = $startTs; $ts <= $endTs; $ts = strtotime('+1 day', $ts)) {
             $dates[] = date('Y-m-d', $ts);
         }
@@ -271,7 +273,7 @@ class Cp_etl_model extends CI_Model
         log_message('info', 'CP ETL Backfill - Completed: ' . $existingLogId . ' with ' . $insertedTotal . ' inserted' . $startDate);
 
         // Update log at the end
-        $this->complete_log($existingLogId, $insertedTotal, $startDate, date('Y-m-d'));
+        $this->complete_log($existingLogId, $insertedTotal, $startDate, $computedEnd);
 
         return [
             'success' => true,
