@@ -14,8 +14,28 @@ class Sas_users_login_hourly_etl extends CI_Controller {
     }
 
     /**
-     * Run SAS ETL process via API - Simplified for synchronization only
+     * Run complete SAS ETL process with concurrency control
      * POST /api/sas_users_login_hourly_etl/run
+     * 
+     * @param string extraction_date (optional) - Date in YYYY-MM-DD format, defaults to current date
+     * @param int concurrency (optional) - Concurrency level (1-10), defaults to 1
+     * 
+     * Concurrency parameter controls:
+     * - 1: Sequential processing (default, safest)
+     * - 2-5: Moderate parallel processing
+     * - 6-10: High parallel processing (use with caution)
+     * 
+     * Usage examples:
+     * - Basic: POST /api/sas_users_login_hourly_etl/run
+     * - With date: POST /api/sas_users_login_hourly_etl/run {"extraction_date": "2024-01-15"}
+     * - With concurrency: POST /api/sas_users_login_hourly_etl/run {"concurrency": 5}
+     * - Both: POST /api/sas_users_login_hourly_etl/run {"extraction_date": "2024-01-15", "concurrency": 3}
+     * 
+     * Future enhancements can use this parameter for:
+     * - Batch size control in data processing
+     * - Parallel database operations
+     * - Resource allocation management
+     * - Performance optimization
      */
     public function run() {
         try {
@@ -40,12 +60,25 @@ class Sas_users_login_hourly_etl extends CI_Controller {
                 ], 400);
             }
 
+            // Get concurrency from POST data or use default
+            $concurrency = (int) ($this->input->post('concurrency') ?: 1);
+            
+            // Validate concurrency (must be between 1 and 10)
+            if ($concurrency < 1 || $concurrency > 10) {
+                return $this->json_response([
+                    'success' => false,
+                    'error' => 'Invalid concurrency value. Must be between 1 and 10.',
+                    'concurrency_provided' => $concurrency
+                ], 400);
+            }
+
             // Create log entry for tracking
             $log_data = [
                 'process_name' => 'sas_etl_complete',
                 'status' => 'running',
                 'message' => 'Starting SAS ETL process via API',
                 'extraction_date' => $extraction_date,
+                'parameters' => json_encode(['concurrency' => $concurrency]),
                 'start_time' => date('Y-m-d H:i:s'),
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s')
@@ -114,6 +147,7 @@ class Sas_users_login_hourly_etl extends CI_Controller {
                     'message' => 'SAS ETL process completed successfully',
                     'data' => [
                         'extraction_date' => $extraction_date,
+                        'concurrency' => $concurrency,
                         'log_id' => $log_id,
                         'users_etl' => $users_result,
                         'hourly_etl' => $hourly_result,
@@ -323,7 +357,7 @@ class Sas_users_login_hourly_etl extends CI_Controller {
             $page = (int) ($this->input->get('page') ?: 1);
             $limit = (int) ($this->input->get('limit') ?: 10);
             $search = $this->input->get('search') ?: '';
-            $extraction_date = $this->input->get('extraction_date') ?: date('Y-m-d');
+            $extraction_date = $this->input->get('extraction_date');
             $hour = $this->input->get('hour');
             $role_type = $this->input->get('role_type');
             $is_active = $this->input->get('is_active');
@@ -332,10 +366,12 @@ class Sas_users_login_hourly_etl extends CI_Controller {
             if ($page < 1) $page = 1;
             if ($limit < 1) $limit = 10;
             
-            // Build filters
-            $filters = [
-                'extraction_date' => $extraction_date
-            ];
+            // Build filters - only include filters that have actual values
+            $filters = [];
+            
+            if ($extraction_date !== null && $extraction_date !== '') {
+                $filters['extraction_date'] = $extraction_date;
+            }
             
             if ($hour !== null && $hour !== '') {
                 $filters['hour'] = $hour;

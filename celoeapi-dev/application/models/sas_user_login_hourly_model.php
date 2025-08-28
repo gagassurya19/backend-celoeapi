@@ -70,8 +70,8 @@ class Sas_user_login_hourly_model extends CI_Model {
         
         foreach ($users as $user) {
             if ($user['lastaccess'] > 0) {
-                // Get hour from lastaccess timestamp
-                $hour = (int) date('G', $user['lastaccess']);
+                // Get hour from lastaccess timestamp using Asia/Jakarta timezone
+                $hour = $this->get_hour_from_timestamp($user['lastaccess']);
                 
                 // Check if user already has a record for this hour and date
                 $existing_record = $this->db->get_where($this->table_name, [
@@ -296,7 +296,7 @@ class Sas_user_login_hourly_model extends CI_Model {
             }
 
             // Step 3: Get additional real-time data for current hour (if any new activity)
-            $current_hour = (int) date('G');
+            $current_hour = $this->get_hour_from_timestamp(time());
             $realtime_updates = $this->detect_realtime_activity($extraction_date, $current_hour);
             
             // NO LOGGING - Return results for main CLI method to log
@@ -342,7 +342,7 @@ class Sas_user_login_hourly_model extends CI_Model {
             $updated = 0;
             
             foreach ($recent_users as $user) {
-                $user_hour = (int) date('G', $user['lastaccess']);
+                $user_hour = $this->get_hour_from_timestamp($user['lastaccess']);
                 
                 // Only process if activity is in current hour
                 if ($user_hour === $current_hour) {
@@ -418,6 +418,36 @@ class Sas_user_login_hourly_model extends CI_Model {
         }
     }
 
+    /**
+     * Get hour from timestamp using Asia/Jakarta timezone
+     * @param int $timestamp Unix timestamp
+     * @return int Hour in 24-hour format (0-23)
+     */
+    private function get_hour_from_timestamp($timestamp) {
+        try {
+            // Set timezone to Asia/Jakarta
+            $timezone = new DateTimeZone('Asia/Jakarta');
+            $date = new DateTime();
+            $date->setTimestamp($timestamp);
+            $date->setTimezone($timezone);
+            
+            $hour = (int) $date->format('G'); // 24-hour format without leading zeros
+            
+            // Log timezone conversion for debugging
+            $utc_date = new DateTime();
+            $utc_date->setTimestamp($timestamp);
+            $utc_date->setTimezone(new DateTimeZone('UTC'));
+            
+            log_message('debug', "Timezone conversion: UTC {$utc_date->format('Y-m-d H:i:s')} -> Asia/Jakarta {$date->format('Y-m-d H:i:s')} -> Hour: {$hour}");
+            
+            return $hour;
+            
+        } catch (Exception $e) {
+            // Fallback to UTC if timezone conversion fails
+            log_message('error', "Timezone conversion failed: " . $e->getMessage() . ". Falling back to UTC for timestamp: {$timestamp}");
+            return (int) date('G', $timestamp);
+        }
+    }
 
 
     /**
@@ -669,7 +699,7 @@ class Sas_user_login_hourly_model extends CI_Model {
             ];
         }
 
-        $current_hour = (int) date('G', $moodle_user['lastaccess']);
+        $current_hour = $this->get_hour_from_timestamp($moodle_user['lastaccess']);
         
         return [
             'status' => 'success',
@@ -713,7 +743,7 @@ class Sas_user_login_hourly_model extends CI_Model {
         $debug_info['moodle_user'] = $moodle_user;
         
         if ($moodle_user) {
-            $current_hour = (int) date('G', $moodle_user['lastaccess']);
+            $current_hour = $this->get_hour_from_timestamp($moodle_user['lastaccess']);
             $debug_info['current_hour'] = $current_hour;
             
             // Step 3: Simulate extraction process
@@ -809,7 +839,7 @@ class Sas_user_login_hourly_model extends CI_Model {
         $test_results['moodle_data'] = $moodle_user;
         
         if ($moodle_user && $current_record) {
-            $current_hour = (int) date('G', $moodle_user['lastaccess']);
+            $current_hour = $this->get_hour_from_timestamp($moodle_user['lastaccess']);
             
             // Step 3: Check if this should trigger an increment
             $should_increment = $current_record['last_login_time'] != $moodle_user['lastaccess'];
