@@ -44,7 +44,7 @@ try {
     // Run migrations to latest version
     echo "Running migrations to latest version...\n";
     
-    if ($CI->migration->version(10) === FALSE) {
+    if ($CI->migration->version(13) === FALSE) {
         echo "Migration failed: " . $CI->migration->error_string() . "\n";
         exit(1);
     } else {
@@ -70,7 +70,9 @@ try {
         'cp_student_quiz_detail',
         'cp_student_assignment_detail',
         'cp_student_resource_access',
-        'cp_etl_logs'
+        'cp_etl_logs',
+        'sp_etl_summary',
+        'sp_etl_detail'
     ];
     
     $missing_tables = [];

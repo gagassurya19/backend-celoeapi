@@ -2031,4 +2031,254 @@ class Cli extends CI_Controller {
             exit(1);
         }
     }
+
+    /**
+     * Run SP ETL Summary process via CLI
+     * Usage: php index.php cli run_sp_summary_etl [date]
+     * @param string $extraction_date Optional date parameter (YYYY-MM-DD format)
+     */
+    public function run_sp_summary_etl($extraction_date = null) {
+        try {
+            if (!$extraction_date) {
+                $extraction_date = date('Y-m-d');
+            }
+            
+            echo "=== Running SP ETL Summary Process ===\n";
+            echo "Date: " . $extraction_date . "\n";
+            echo "Time: " . date('Y-m-d H:i:s') . "\n\n";
+
+            $this->load->model('sp_etl_summary_model', 'm_sp_summary');
+            
+            // Check if data already exists for this extraction date
+            echo "🔍 Checking if data already exists for date: $extraction_date\n";
+            
+            $existing_summary = $this->db->query("SELECT COUNT(*) as count FROM sp_etl_summary WHERE extraction_date = ?", [$extraction_date])->row()->count;
+            
+            echo "   Existing data found:\n";
+            echo "   - Summary: $existing_summary records\n";
+            
+            // If data already exists, ask user if they want to continue
+            if ($existing_summary > 0) {
+                echo "\n⚠️  WARNING: Data already exists for date $extraction_date!\n";
+                echo "   Continuing will update existing records instead of creating duplicates.\n";
+                echo "   Press Enter to continue or Ctrl+C to abort...\n";
+                
+                // Wait for user input (CLI only)
+                if ($this->input->is_cli_request()) {
+                    $handle = fopen("php://stdin", "r");
+                    fgets($handle);
+                    fclose($handle);
+                }
+            }
+            
+            // Initialize log_id variable
+            $log_id = null;
+            
+            // Create single log entry with 'running' status
+            $log_data = [
+                'process_name' => 'sp_etl_summary',
+                'status' => 'running',
+                'message' => 'Starting SP ETL Summary process',
+                'extraction_date' => $extraction_date,
+                'start_time' => date('Y-m-d H:i:s'),
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $this->db->insert('sas_users_login_etl_logs', $log_data);
+            $log_id = $this->db->insert_id();
+            
+            // Run the complete SP Summary ETL process
+            echo "📊 Running SP Summary ETL process...\n";
+            $summary_result = $this->m_sp_summary->run_complete_summary_etl($extraction_date);
+            
+            if (!$summary_result['success']) {
+                // Update log to failed status
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'SP Summary ETL failed: ' . $summary_result['error'],
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                
+                throw new Exception('SP Summary ETL failed: ' . $summary_result['error']);
+            }
+            
+            echo "✅ SP Summary ETL completed successfully\n";
+            echo "   Extracted: " . $summary_result['extracted'] . " summary records\n";
+            echo "   Inserted: " . $summary_result['inserted'] . " new records\n";
+            echo "   Updated: " . $summary_result['updated'] . " existing records\n";
+            
+            // Process completed successfully
+            echo "\nStep 3: Process completed successfully\n";
+            echo "✅ SP Summary ETL process completed\n";
+            
+            // Update log to completed status with final results
+            $this->db->where('id', $log_id);
+            $this->db->update('sas_users_login_etl_logs', [
+                'status' => 'completed',
+                'message' => 'SP Summary ETL process completed successfully',
+                'end_time' => date('Y-m-d H:i:s'),
+                'duration_seconds' => time() - strtotime($log_data['start_time']),
+                'extracted_count' => $summary_result['extracted'],
+                'inserted_count' => $summary_result['inserted'],
+                'updated_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            echo "\n🎯 SP Summary ETL process completed successfully!\n";
+            echo "   All data saved to sp_etl_summary table\n";
+            echo "   Data ready for API consumption\n";
+            
+            return [
+                'success' => true,
+                'extraction_date' => $extraction_date,
+                'log_id' => $log_id,
+                'summary_etl' => $summary_result
+            ];
+            
+        } catch (Exception $e) {
+            echo "❌ SP Summary ETL failed: " . $e->getMessage() . "\n";
+            log_message('error', 'CLI SP Summary ETL failed: ' . $e->getMessage());
+            
+            // Ensure log is updated to failed even if an exception occurs
+            if (isset($log_id)) {
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'SP Summary ETL process failed: ' . $e->getMessage(),
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            }
+            exit(1);
+        }
+    }
+
+    /**
+     * Run SP ETL Detail process via CLI
+     * Usage: php index.php cli run_sp_detail_etl [date]
+     * @param string $extraction_date Optional date parameter (YYYY-MM-DD format)
+     */
+    public function run_sp_detail_etl($extraction_date = null) {
+        try {
+            if (!$extraction_date) {
+                $extraction_date = date('Y-m-d');
+            }
+            
+            echo "=== Running SP ETL Detail Process ===\n";
+            echo "Date: " . $extraction_date . "\n";
+            echo "Time: " . date('Y-m-d H:i:s') . "\n\n";
+
+            $this->load->model('sp_etl_detail_model', 'm_sp_detail');
+            
+            // Check if data already exists for this extraction date
+            echo "🔍 Checking if data already exists for date: $extraction_date\n";
+            
+            $existing_detail = $this->db->query("SELECT COUNT(*) as count FROM sp_etl_detail WHERE extraction_date = ?", [$extraction_date])->row()->count;
+            
+            echo "   Existing data found:\n";
+            echo "   - Detail: $existing_detail records\n";
+            
+            // If data already exists, ask user if they want to continue
+            if ($existing_detail > 0) {
+                echo "\n⚠️  WARNING: Data already exists for date $extraction_date!\n";
+                echo "   Continuing will update existing records instead of creating duplicates.\n";
+                echo "   Press Enter to continue or Ctrl+C to abort...\n";
+                
+                // Wait for user input (CLI only)
+                if ($this->input->is_cli_request()) {
+                    $handle = fopen("php://stdin", "r");
+                    fgets($handle);
+                    fclose($handle);
+                }
+            }
+            
+            // Initialize log_id variable
+            $log_id = null;
+            
+            // Create single log entry with 'running' status
+            $log_data = [
+                'process_name' => 'sp_etl_detail',
+                'status' => 'running',
+                'message' => 'Starting SP ETL Detail process',
+                'extraction_date' => $extraction_date,
+                'start_time' => date('Y-m-d H:i:s'),
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $this->db->insert('sas_users_login_etl_logs', $log_data);
+            $log_id = $this->db->insert_id();
+            
+            // Run the complete SP Detail ETL process
+            echo "📊 Running SP Detail ETL process...\n";
+            $detail_result = $this->m_sp_detail->run_complete_detail_etl($extraction_date);
+            
+            if (!$detail_result['success']) {
+                // Update log to failed status
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'SP Detail ETL failed: ' . $detail_result['error'],
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+                
+                throw new Exception('SP Detail ETL failed: ' . $detail_result['error']);
+            }
+            
+            echo "✅ SP Detail ETL completed successfully\n";
+            echo "   Extracted: " . $detail_result['extracted'] . " detail records\n";
+            echo "   Inserted: " . $detail_result['inserted'] . " new records\n";
+            echo "   Updated: " . $detail_result['updated'] . " existing records\n";
+            
+            // Process completed successfully
+            echo "\nStep 3: Process completed successfully\n";
+            echo "✅ SP Detail ETL process completed\n";
+            
+            // Update log to completed status with final results
+            $this->db->where('id', $log_id);
+            $this->db->update('sas_users_login_etl_logs', [
+                'status' => 'completed',
+                'message' => 'SP Detail ETL process completed successfully',
+                'end_time' => date('Y-m-d H:i:s'),
+                'duration_seconds' => time() - strtotime($log_data['start_time']),
+                'extracted_count' => $detail_result['extracted'],
+                'inserted_count' => $detail_result['inserted'],
+                'updated_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            echo "\n🎯 SP Detail ETL process completed successfully!\n";
+            echo "   All data saved to sp_etl_detail table\n";
+            echo "   Data ready for API consumption\n";
+            
+            return [
+                'success' => true,
+                'extraction_date' => $extraction_date,
+                'log_id' => $log_id,
+                'detail_etl' => $detail_result
+            ];
+            
+        } catch (Exception $e) {
+            echo "❌ SP Detail ETL failed: " . $e->getMessage() . "\n";
+            log_message('error', 'CLI SP Detail ETL failed: ' . $e->getMessage());
+            
+            // Ensure log is updated to failed even if an exception occurs
+            if (isset($log_id) && isset($log_data)) {
+                $this->db->where('id', $log_id);
+                $this->db->update('sas_users_login_etl_logs', [
+                    'status' => 'failed',
+                    'message' => 'SP Detail ETL process failed: ' . $e->getMessage(),
+                    'end_time' => date('Y-m-d H:i:s'),
+                    'duration_seconds' => time() - strtotime($log_data['start_time']),
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+            }
+            exit(1);
+        }
+    }
 } 

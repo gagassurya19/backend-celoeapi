@@ -229,7 +229,7 @@ function determine_http_method($method_name) {
 	}
 	
 	// Fallback to method name patterns
-	if (strpos($method_name, 'get') === 0 || strpos($method_name, 'fetch') === 0 || strpos($method_name, 'list') === 0 || strpos($method_name, 'export') === 0 || strpos($method_name, 'status') === 0 || strpos($method_name, 'health') === 0 || strpos($method_name, 'logs') === 0) {
+	if (strpos($method_name, 'get') === 0 || strpos($method_name, 'fetch') === 0 || strpos($method_name, 'list') === 0 || strpos($method_name, 'status') === 0 || strpos($method_name, 'health') === 0 || strpos($method_name, 'logs') === 0) {
 		return 'get';
 	}
 	if (strpos($method_name, 'post') === 0 || strpos($method_name, 'create') === 0 || strpos($method_name, 'add') === 0 || strpos($method_name, 'run') === 0 || strpos($method_name, 'clear') === 0 || strpos($method_name, 'clean') === 0 || strpos($method_name, 'initialize') === 0) {
@@ -240,6 +240,16 @@ function determine_http_method($method_name) {
 	}
 	if (strpos($method_name, 'delete') === 0 || strpos($method_name, 'remove') === 0) {
 		return 'delete';
+	}
+	
+	// Special handling for export methods
+	if (strpos($method_name, 'export') === 0) {
+		// Specific methods that should be POST
+		if (in_array($method_name, ['export_incremental', 'export_batch', 'export_data'])) {
+			return 'post';
+		}
+		// Default export methods are GET
+		return 'get';
 	}
 	
 	// Default to GET for most methods
@@ -305,6 +315,25 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 		}
 		if ($clean_method_name === 'status') {
 			return '/api/etl_cp/status';
+		}
+	}
+	
+	// Map SP ETL methods to proper paths
+	if (strtolower($controller_name) === 'sp_etl') {
+		if ($clean_method_name === 'run') {
+			return '/api/sp_etl/run';
+		}
+		if ($clean_method_name === 'logs') {
+			return '/api/sp_etl/logs';
+		}
+		if ($clean_method_name === 'get_log') {
+			return '/api/sp_etl/get_log/{id}';
+		}
+		if ($clean_method_name === 'stats') {
+			return '/api/sp_etl/stats';
+		}
+		if ($clean_method_name === 'export_incremental') {
+			return '/api/sp_etl/export_incremental';
 		}
 	}
 	
@@ -440,8 +469,8 @@ function generate_parameters($method_name, $content) {
 function analyze_controller_parameters($method_name, $content) {
 	$parameters = [];
 	
-	// Add table selection parameters for export
-	if (strpos($method_name, 'export') !== false) {
+	// Add table selection parameters for export (but exclude export_incremental which uses request body)
+	if (strpos($method_name, 'export') !== false && strpos($method_name, 'export_incremental') === false) {
 		$parameters[] = [
 			'name' => 'table',
 			'in' => 'query',
@@ -512,6 +541,48 @@ function generate_request_body($method_name, $content) {
 		return null;
 	}
 	
+	// Special handling for export_incremental method (even if not detected as POST by pattern)
+	if (strpos($method_name, 'export_incremental') !== false) {
+		return [
+			'required' => true,
+			'content' => [
+				'application/json' => [
+					'schema' => [
+						'type' => 'object',
+						'properties' => [
+							'table_name' => [
+								'type' => 'string',
+								'enum' => ['sp_etl_summary', 'sp_etl_detail'],
+								'description' => 'Name of the table to export incrementally',
+								'example' => 'sp_etl_summary'
+							],
+							'batch_size' => [
+								'type' => 'integer',
+								'minimum' => 1,
+								'maximum' => 1000,
+								'default' => 100,
+								'description' => 'Number of records to process per batch'
+							],
+							'extraction_date' => [
+								'type' => 'string',
+								'format' => 'date',
+								'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+								'description' => 'Extraction date (YYYY-MM-DD format)',
+								'example' => '2024-08-28'
+							],
+							'force_reset' => [
+								'type' => 'boolean',
+								'default' => false,
+								'description' => 'Force reset export state'
+							]
+						],
+						'required' => ['table_name']
+					]
+				]
+			]
+		];
+	}
+	
 	return null;
 }
 
@@ -519,6 +590,51 @@ function generate_request_body($method_name, $content) {
  * Generate responses for endpoint
  */
 function generate_responses($method_name) {
+	// Special handling for export_incremental method
+	if (strpos($method_name, 'export_incremental') !== false) {
+		return [
+			'200' => [
+				'description' => 'Success - Incremental export completed',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => true],
+								'message' => ['type' => 'string', 'example' => 'Incremental export completed successfully'],
+								'log_id' => ['type' => 'integer', 'example' => 123],
+								'duration' => ['type' => 'number', 'example' => 2.5],
+								'table_name' => ['type' => 'string', 'example' => 'sp_etl_summary'],
+								'batch_size' => ['type' => 'integer', 'example' => 100],
+								'extraction_date' => ['type' => 'string', 'example' => '2024-08-28'],
+								'export_summary' => ['type' => 'object'],
+								'export_detail' => ['type' => 'object']
+							]
+						]
+					]
+				]
+			],
+			'400' => [
+				'description' => 'Bad request - Invalid parameters',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'status' => ['type' => 'integer', 'example' => 400],
+								'message' => ['type' => 'string', 'example' => 'Bad Request'],
+								'timestamp' => ['type' => 'string', 'example' => '2025-08-28 12:20:12'],
+								'data' => ['type' => 'string', 'example' => 'Invalid table_name. Use: sp_etl_summary or sp_etl_detail']
+							]
+						]
+					]
+				]
+			],
+			'401' => ['$ref' => '#/components/schemas/UnauthorizedError'],
+			'500' => ['$ref' => '#/components/schemas/ServerError']
+		];
+	}
+	
 	// Treat ETL run/backfill endpoints as async
 	if (strpos($method_name, 'backfill') !== false || (strpos($method_name, 'run') !== false && strpos($method_name, 'run_pipeline') === false) || strpos($method_name, 'etl') !== false) {
 		return [
