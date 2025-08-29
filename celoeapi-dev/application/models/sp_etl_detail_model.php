@@ -174,7 +174,7 @@ class Sp_etl_detail_model extends CI_Model {
     }
 
     /**
-     * Insert extracted detailed data to ETL table
+     * Insert extracted detailed data to ETL table (only new records)
      * @param array $data Array of detailed data
      * @return int Number of affected rows
      */
@@ -184,13 +184,28 @@ class Sp_etl_detail_model extends CI_Model {
         }
 
         try {
-            // Use batch insert for better performance
-            $this->db->insert_batch($this->table_name, $data);
-            $affected_rows = $this->db->affected_rows();
+            $inserted_count = 0;
             
-            log_message('info', "Inserted {$affected_rows} detailed records to {$this->table_name}");
+            foreach ($data as $record) {
+                // Check if log_id already exists (regardless of extraction_date)
+                $existing = $this->db->where('log_id', $record['log_id'])
+                                   ->get($this->table_name)
+                                   ->row_array();
+                
+                if (!$existing) {
+                    // Only insert if log_id doesn't exist at all
+                    $this->db->insert($this->table_name, $record);
+                    if ($this->db->affected_rows() > 0) {
+                        $inserted_count++;
+                    }
+                } else {
+                    log_message('info', "Log ID {$record['log_id']} already exists, skipping insert");
+                }
+            }
             
-            return $affected_rows;
+            log_message('info', "Inserted {$inserted_count} new detailed records to {$this->table_name}");
+            
+            return $inserted_count;
             
         } catch (Exception $e) {
             log_message('error', "Error inserting detailed data: " . $e->getMessage());
@@ -435,8 +450,8 @@ class Sp_etl_detail_model extends CI_Model {
                 ];
             }
 
-            // Step 2: Clear existing data for this date
-            $this->clear_etl_data($extraction_date);
+            // Step 2: Check total existing data (no deletion to preserve IDs)
+            $existing_count = $this->db->count_all_results($this->table_name);
 
             // Step 3: Insert new data
             $inserted_count = $this->insert_detail_data($extracted_data);
@@ -448,10 +463,10 @@ class Sp_etl_detail_model extends CI_Model {
                 'success' => true,
                 'extracted' => $extracted_count,
                 'inserted' => $inserted_count,
-                'updated' => 0,
+                'existing' => $existing_count,
                 'date' => $extraction_date,
                 'duration' => $duration,
-                'message' => "Processed {$extracted_count} detailed module records: {$inserted_count} inserted"
+                'message' => "Processed {$extracted_count} detailed module records: {$inserted_count} new unique logs inserted, {$existing_count} total existing records preserved"
             ];
 
         } catch (Exception $e) {

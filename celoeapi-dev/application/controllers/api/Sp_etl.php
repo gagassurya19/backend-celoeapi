@@ -126,7 +126,7 @@ class Sp_etl extends CI_Controller {
                 $response['error'] = $results['error_message'];
             }
 
-            $this->_send_response(200, 'OK', $response);
+            $this->_send_response(200, 'OK', $response, false);
 
         } catch (Exception $e) {
             log_message('error', "Error in sp_etl run: " . $e->getMessage());
@@ -354,8 +354,7 @@ class Sp_etl extends CI_Controller {
      * 
      * @param string table_name Table to export (sp_etl_summary, sp_etl_detail)
      * @param int batch_size Records per batch (default: 100, max: 1000)
-     * @param string extraction_date Date for extraction (YYYY-MM-DD, default: today)
-     * @param int last_export_id Last exported record ID for incremental export (default: 0)
+     * @param int offset Starting position for pagination (default: 0)
      * @return JSON response with actual data records and export metadata
      */
     public function export_incremental() {
@@ -375,8 +374,7 @@ class Sp_etl extends CI_Controller {
             // Get parameters
             $table_name = $this->input->post('table_name');
             $batch_size = (int) $this->input->post('batch_size') ?: 100;
-            $extraction_date = $this->input->post('extraction_date') ?: date('Y-m-d');
-            $last_export_id = (int) $this->input->post('last_export_id') ?: 0;
+            $offset = (int) $this->input->post('offset') ?: 0;
 
             // If POST data is empty, try to parse JSON input manually
             if (empty($table_name)) {
@@ -391,8 +389,7 @@ class Sp_etl extends CI_Controller {
                     log_message('info', "JSON parsing successful, extracting parameters...");
                     $table_name = $json_data['table_name'] ?? null;
                     $batch_size = (int) ($json_data['batch_size'] ?? 100);
-                    $extraction_date = $json_data['extraction_date'] ?? date('Y-m-d');
-                    $last_export_id = (int) ($json_data['last_export_id'] ?? 0);
+                    $offset = (int) ($json_data['offset'] ?? 0);
                     
                     log_message('info', "Parsed JSON data: " . json_encode($json_data));
                     log_message('info', "Extracted table_name: " . var_export($table_name, true));
@@ -408,7 +405,8 @@ class Sp_etl extends CI_Controller {
             // Debug logging
             log_message('info', "Received POST data: " . json_encode($this->input->post()));
             log_message('info', "table_name: " . var_export($table_name, true));
-            log_message('info', "last_export_id: " . var_export($last_export_id, true));
+            log_message('info', "batch_size: " . var_export($batch_size, true));
+            log_message('info', "offset: " . var_export($offset, true));
 
             // Validate parameters
             if (!in_array($table_name, ['sp_etl_summary', 'sp_etl_detail'])) {
@@ -421,26 +419,29 @@ class Sp_etl extends CI_Controller {
                 return;
             }
 
-            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $extraction_date)) {
-                $this->_send_response(400, 'Bad Request', 'Invalid date format. Use YYYY-MM-DD');
+            if ($offset < 0) {
+                $this->_send_response(400, 'Bad Request', 'Offset must be 0 or greater');
                 return;
             }
+
+            // Calculate page number from offset
+            $page = floor($offset / $batch_size) + 1;
 
             // Get data from database based on table name
             $data = null;
             if ($table_name === 'sp_etl_summary') {
                 $data = $this->sp_etl_summary_model->get_summary_with_pagination(
-                    1, 
+                    $page, 
                     $batch_size, 
                     '', 
-                    ['extraction_date' => $extraction_date]
+                    []
                 );
             } else {
                 $data = $this->sp_etl_detail_model->get_detail_with_pagination(
-                    1, 
+                    $page, 
                     $batch_size, 
                     '', 
-                    ['extraction_date' => $extraction_date]
+                    []
                 );
             }
 
@@ -453,9 +454,10 @@ class Sp_etl extends CI_Controller {
             // Calculate export info
             $exported_count = count($data['data']);
             $total_available = $data['pagination']['total_records'];
-            $has_more_data = ($exported_count > 0 && $exported_count < $total_available);
-            $export_completed = ($exported_count == 0 || $exported_count >= $total_available);
-            $next_export_id = $exported_count > 0 ? end($data['data'])['id'] : $last_export_id;
+            $current_offset = $offset;
+            $next_offset = $offset + $batch_size;
+            $has_more_data = ($next_offset < $total_available);
+            $export_completed = ($next_offset >= $total_available);
 
             // Send response with actual data
             $response = [
@@ -463,18 +465,19 @@ class Sp_etl extends CI_Controller {
                 'message' => 'Data exported successfully',
                 'table_name' => $table_name,
                 'batch_size' => $batch_size,
-                'extraction_date' => $extraction_date,
+                'current_offset' => $current_offset,
+                'next_offset' => $next_offset,
                 'export_info' => [
                     'records_exported' => $exported_count,
                     'total_available' => $total_available,
                     'has_more_data' => $has_more_data,
-                    'next_export_id' => $next_export_id,
-                    'export_completed' => $export_completed
+                    'export_completed' => $export_completed,
+                    'progress_percentage' => round(($next_offset / $total_available) * 100, 2)
                 ],
                 'data' => $data['data'] // Actual data records
             ];
 
-            $this->_send_response(200, 'OK', $response);
+            $this->_send_response(200, 'OK', $response, false);
 
         } catch (Exception $e) {
             log_message('error', "Error in incremental export: " . $e->getMessage());
@@ -487,8 +490,9 @@ class Sp_etl extends CI_Controller {
      * @param int $status_code HTTP status code
      * @param string $status_text Status text
      * @param mixed $data Response data
+     * @param bool $wrap_response Whether to wrap response in standard format (default: true)
      */
-    private function _send_response($status_code, $status_text, $data) {
+    private function _send_response($status_code, $status_text, $data, $wrap_response = true) {
         // Ensure no output has been sent before
         if (headers_sent()) {
             log_message('error', 'Headers already sent in Sp_etl controller');
@@ -496,12 +500,22 @@ class Sp_etl extends CI_Controller {
         
         http_response_code($status_code);
         
-        $response = [
-            'status' => $status_code,
-            'message' => $status_text,
-            'timestamp' => date('Y-m-d H:i:s'),
-            'data' => $data
-        ];
+        if ($wrap_response) {
+            $response = [
+                'status' => $status_code,
+                'message' => $status_text,
+                'timestamp' => date('Y-m-d H:i:s'),
+            ];
+            
+            // If data is already an array with meta, export_info, and data keys, use it directly
+            if (is_array($data) && isset($data['meta']) && isset($data['export_info']) && isset($data['data'])) {
+                $response = array_merge($response, $data);
+            } else {
+                $response['data'] = $data;
+            }
+        } else {
+            $response = $data;
+        }
         
         echo json_encode($response, JSON_PRETTY_PRINT);
         exit;

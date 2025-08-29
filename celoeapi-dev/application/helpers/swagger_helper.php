@@ -563,17 +563,10 @@ function generate_request_body($method_name, $content) {
 								'default' => 100,
 								'description' => 'Number of records to process per batch'
 							],
-							'extraction_date' => [
-								'type' => 'string',
-								'format' => 'date',
-								'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
-								'description' => 'Extraction date (YYYY-MM-DD format)',
-								'example' => '2024-08-28'
-							],
-							'force_reset' => [
-								'type' => 'boolean',
-								'default' => false,
-								'description' => 'Force reset export state'
+							'offset' => [
+								'type' => 'integer',
+								'default' => 0,
+								'description' => 'Offset for pagination'
 							]
 						],
 						'required' => ['table_name']
