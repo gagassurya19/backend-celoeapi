@@ -82,6 +82,102 @@ class etl_cp extends REST_Controller {
 		return $date;
 	}
 
+	// POST /api/etl_cp/stop_pipeline - Force stop running CP ETL pipeline
+	public function stop_pipeline_post()
+	{
+		try {
+			$this->load->database();
+			
+			// Get all running CP ETL processes (status = 2 for inprogress)
+			$this->db->from('cp_etl_logs');
+			$this->db->where('status', 2);
+			$this->db->where('type', 'run_cp_backfill');
+			$running_processes = $this->db->get()->result_array();
+			
+			if (empty($running_processes)) {
+				$this->response([
+					'status' => true,
+					'message' => 'No running CP ETL pipelines found',
+					'stopped_count' => 0
+				], REST_Controller::HTTP_OK);
+				return;
+			}
+			
+			$stopped_count = 0;
+			$stopped_processes = [];
+			
+			foreach ($running_processes as $process) {
+				try {
+					// Update log status to failed (status = 3)
+					$this->db->where('id', $process['id']);
+					$this->db->update('cp_etl_logs', [
+						'status' => 3, // failed
+						'end_date' => date('Y-m-d H:i:s'),
+						'message' => 'Force stopped by API - data may be incomplete',
+						'duration_seconds' => time() - strtotime($process['start_date'])
+					]);
+					
+					$stopped_count++;
+					$stopped_processes[] = [
+						'log_id' => (int)$process['id'],
+						'start_date' => $process['start_date'],
+						'stopped_at' => date('Y-m-d H:i:s')
+					];
+					
+					log_message('info', 'Force stopped CP ETL process ID: ' . $process['id']);
+					
+				} catch (Exception $e) {
+					log_message('error', 'Failed to update log for process ID ' . $process['id'] . ': ' . $e->getMessage());
+				}
+			}
+			
+			// Try to kill any running PHP processes related to CP ETL
+			$this->_kill_cp_etl_processes();
+			
+			$this->response([
+				'status' => true,
+				'message' => 'CP ETL pipeline stopped successfully',
+				'stopped_count' => $stopped_count,
+				'stopped_processes' => $stopped_processes,
+				'timestamp' => date('Y-m-d H:i:s')
+			], REST_Controller::HTTP_OK);
+			
+		} catch (Exception $e) {
+			log_message('error', 'CP stop pipeline failed: ' . $e->getMessage());
+			$this->response([
+				'status' => false,
+				'message' => 'Failed to stop CP ETL pipeline',
+				'error' => $e->getMessage()
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+	
+	/**
+	 * Kill running CP ETL processes
+	 */
+	private function _kill_cp_etl_processes()
+	{
+		try {
+			// Kill processes containing 'run_cp_backfill' in command line
+			if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+				// Windows
+				exec('taskkill /F /IM php.exe /FI "WINDOWTITLE eq *run_cp_backfill*" 2>nul', $output, $return);
+			} else {
+				// Linux/Unix - kill processes by grep pattern
+				exec("pkill -f 'run_cp_backfill' 2>/dev/null", $output, $return);
+				
+				// Alternative: kill by process name if pkill fails
+				if ($return !== 0) {
+					exec("ps aux | grep 'run_cp_backfill' | grep -v grep | awk '{print \$2}' | xargs kill -9 2>/dev/null", $output, $return);
+				}
+			}
+			
+			log_message('info', 'Attempted to kill CP ETL processes, return code: ' . $return);
+		} catch (Exception $e) {
+			log_message('error', 'Failed to kill CP ETL processes: ' . $e->getMessage());
+		}
+	}
+
 	// POST /api/etl_cp/clean - bersihkan semua data CP (tanpa menghapus cp_etl_logs)
 	public function clean_post()
 	{

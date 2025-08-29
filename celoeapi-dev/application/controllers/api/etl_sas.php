@@ -154,6 +154,102 @@ class etl_sas extends REST_Controller {
 		return $date;
 	}
 
+	// POST /api/etl_sas/stop_pipeline - Force stop running SAS ETL pipeline
+	public function stop_pipeline_post()
+	{
+		try {
+			$this->load->database();
+			
+			// Get all running SAS ETL processes (status = 'running')
+			$this->db->from('sas_etl_logs');
+			$this->db->where('process_name', 'user_activity_etl');
+			$this->db->where('status', 'running');
+			$running_processes = $this->db->get()->result_array();
+			
+			if (empty($running_processes)) {
+				$this->response([
+					'status' => true,
+					'message' => 'No running SAS ETL pipelines found',
+					'stopped_count' => 0
+				], REST_Controller::HTTP_OK);
+				return;
+			}
+			
+			$stopped_count = 0;
+			$stopped_processes = [];
+			
+			foreach ($running_processes as $process) {
+				try {
+					// Update log status to failed
+					$this->db->where('id', $process['id']);
+					$this->db->update('sas_etl_logs', [
+						'status' => 'failed',
+						'end_time' => date('Y-m-d H:i:s'),
+						'message' => 'Force stopped by API - data may be incomplete',
+						'duration_seconds' => time() - strtotime($process['start_time'])
+					]);
+					
+					$stopped_count++;
+					$stopped_processes[] = [
+						'log_id' => (int)$process['id'],
+						'start_time' => $process['start_time'],
+						'stopped_at' => date('Y-m-d H:i:s')
+					];
+					
+					log_message('info', 'Force stopped SAS ETL process ID: ' . $process['id']);
+					
+				} catch (Exception $e) {
+					log_message('error', 'Failed to update log for process ID ' . $process['id'] . ': ' . $e->getMessage());
+				}
+			}
+			
+			// Try to kill any running PHP processes related to SAS ETL
+			$this->_kill_sas_etl_processes();
+			
+			$this->response([
+				'status' => true,
+				'message' => 'SAS ETL pipeline stopped successfully',
+				'stopped_count' => $stopped_count,
+				'stopped_processes' => $stopped_processes,
+				'timestamp' => date('Y-m-d H:i:s')
+			], REST_Controller::HTTP_OK);
+			
+		} catch (Exception $e) {
+			log_message('error', 'SAS stop pipeline failed: ' . $e->getMessage());
+			$this->response([
+				'status' => false,
+				'message' => 'Failed to stop SAS ETL pipeline',
+				'error' => $e->getMessage()
+			], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+		}
+	}
+	
+	/**
+	 * Kill running SAS ETL processes
+	 */
+	private function _kill_sas_etl_processes()
+	{
+		try {
+			// Kill processes containing 'run_student_activity_from_start' in command line
+			if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+				// Windows
+				exec('taskkill /F /IM php.exe /FI "WINDOWTITLE eq *run_student_activity_from_start*" 2>nul', $output, $return);
+			} else {
+				// Linux/Unix - kill processes by grep pattern
+				exec("pkill -f 'run_student_activity_from_start' 2>/dev/null", $output, $return);
+				
+				// Alternative: kill by process name if pkill fails
+				if ($return !== 0) {
+					exec("ps aux | grep 'run_student_activity_from_start' | grep -v grep | awk '{print \$2}' | xargs kill -9 2>/dev/null", $output, $return);
+				}
+			}
+			
+			log_message('info', 'Attempted to kill SAS ETL processes, return code: ' . $return);
+		} catch (Exception $e) {
+			log_message('error', 'Failed to kill SAS ETL processes: ' . $e->getMessage());
+		}
+	}
+
 	// Background helpers
 	private function _run_sas_catchup_background($start_date, $end_date = null, $concurrency = 1)
 	{
