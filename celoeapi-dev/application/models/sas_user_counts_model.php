@@ -254,8 +254,8 @@ class sas_user_counts_model extends CI_Model {
         }
         
         // Clear existing data for this extraction date first
-        $this->db->where('extraction_date', $extraction_date);
-        $this->db->delete('sas_user_counts_etl');
+        $sql = "DELETE FROM sas_user_counts_etl WHERE extraction_date = ?";
+        $this->db->query($sql, [$extraction_date]);
         
         // Insert new data
         foreach ($data as $row) {
@@ -269,7 +269,11 @@ class sas_user_counts_model extends CI_Model {
             ];
             
             // Insert new record (no need to check existing since we cleared first)
-            $this->db->insert('sas_user_counts_etl', $etl_data);
+            $sql = "INSERT INTO sas_user_counts_etl (courseid, num_students, num_teachers, extraction_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)";
+            $this->db->query($sql, [
+                $etl_data['courseid'], $etl_data['num_students'], $etl_data['num_teachers'],
+                $etl_data['extraction_date'], $etl_data['created_at'], $etl_data['updated_at']
+            ]);
         }
         
         return true;
@@ -280,20 +284,27 @@ class sas_user_counts_model extends CI_Model {
      */
     public function get_user_counts_etl($course_id = null, $date = null)
     {
-        $this->db->select('*');
-        $this->db->from('sas_user_counts_etl');
+        $sql = "SELECT * FROM sas_user_counts_etl";
+        $params = [];
+        $conditions = [];
         
         if ($course_id) {
-            $this->db->where('courseid', $course_id);
+            $conditions[] = "courseid = ?";
+            $params[] = $course_id;
         }
         
         if ($date) {
-            $this->db->where('extraction_date', $date);
+            $conditions[] = "extraction_date = ?";
+            $params[] = $date;
         }
         
-        $this->db->order_by('extraction_date', 'DESC');
+        if (!empty($conditions)) {
+            $sql .= " WHERE " . implode(" AND ", $conditions);
+        }
         
-        $query = $this->db->get();
+        $sql .= " ORDER BY extraction_date DESC";
+        
+        $query = $this->db->query($sql, $params);
         return $query->result_array();
     }
 

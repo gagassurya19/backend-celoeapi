@@ -23,13 +23,9 @@ class sas_user_activity_etl_model extends CI_Model {
 				'currentStatus' => null,
 			];
 		}
-		$this->db->select('*');
-		$this->db->from('sas_etl_logs');
-		$this->db->where('process_name', 'user_activity_etl');
-		$this->db->order_by('created_at', 'DESC');
-		$this->db->limit(1);
 		
-		$query = $this->db->get();
+		$sql = "SELECT * FROM sas_etl_logs WHERE process_name = ? ORDER BY created_at DESC LIMIT 1";
+		$query = $this->db->query($sql, ['user_activity_etl']);
 		$result = $query->row_array();
 		
 		if ($result) {
@@ -72,7 +68,15 @@ class sas_user_activity_etl_model extends CI_Model {
 		}
 		
 		if ($this->db->table_exists('sas_etl_logs')) {
-			return $this->db->insert('sas_etl_logs', $data);
+			$sql = "INSERT INTO sas_etl_logs (process_name, status, message, start_time, extraction_date, parameters, created_at, updated_at, end_time, duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+			$end_time = ($status === 'completed' || $status === 'failed') ? date('Y-m-d H:i:s') : null;
+			$duration_seconds = ($status === 'completed' || $status === 'failed') ? (time() - strtotime($data['start_time'])) : null;
+			
+			return $this->db->query($sql, [
+				$data['process_name'], $data['status'], $data['message'], $data['start_time'],
+				$data['extraction_date'], $data['parameters'], $data['created_at'], $data['updated_at'],
+				$end_time, $duration_seconds
+			]);
 		}
 		return false;
 	}
@@ -96,8 +100,16 @@ class sas_user_activity_etl_model extends CI_Model {
 		if (!$this->db->table_exists('sas_etl_logs')) {
 			return null;
 		}
-		$this->db->insert('sas_etl_logs', $data);
-		return $this->db->insert_id();
+		$sql = "INSERT INTO sas_etl_logs (process_name, status, message, start_time, extraction_date, parameters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+		$this->db->query($sql, [
+			$data['process_name'], $data['status'], $data['message'], $data['start_time'],
+			$data['extraction_date'], $data['parameters'], $data['created_at'], $data['updated_at']
+		]);
+		
+		// Get the last inserted ID using custom SQL
+		$last_id_sql = "SELECT LAST_INSERT_ID() as id";
+		$last_id_query = $this->db->query($last_id_sql);
+		return $last_id_query->row()->id;
 	}
 
 	/**
@@ -109,7 +121,8 @@ class sas_user_activity_etl_model extends CI_Model {
 			return false;
 		}
 		// Get start_time to compute duration
-		$row = $this->db->get_where('sas_etl_logs', ['id' => $log_id])->row_array();
+		$sql = "SELECT * FROM sas_etl_logs WHERE id = ?";
+		$row = $this->db->query($sql, [$log_id])->row_array();
 		$start = isset($row['start_time']) ? strtotime($row['start_time']) : time();
 		$data = [
 			'status' => $status,
@@ -121,7 +134,15 @@ class sas_user_activity_etl_model extends CI_Model {
 		if ($parameters) {
 			$data['parameters'] = json_encode($parameters);
 		}
-		$this->db->where('id', $log_id)->update('sas_etl_logs', $data);
+		$sql = "UPDATE sas_etl_logs SET status = ?, message = ?, end_time = ?, duration_seconds = ?, updated_at = ?";
+		$params = [$data['status'], $data['message'], $data['end_time'], $data['duration_seconds'], $data['updated_at']];
+		if ($parameters) {
+			$sql = "UPDATE sas_etl_logs SET status = ?, message = ?, end_time = ?, duration_seconds = ?, updated_at = ?, parameters = ?";
+			$params[] = $data['parameters'];
+		}
+		$sql .= " WHERE id = ?";
+		$params[] = $log_id;
+		$this->db->query($sql, $params);
 		return true;
 	}
 
@@ -133,7 +154,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		if (!$this->db->table_exists('sas_etl_watermarks')) {
 			return null;
 		}
-		$row = $this->db->get_where('sas_etl_watermarks', ['process_name' => $process_name])->row_array();
+		$sql = "SELECT * FROM sas_etl_watermarks WHERE process_name = ?";
+		$row = $this->db->query($sql, [$process_name])->row_array();
 		return $row && isset($row['last_date']) ? $row['last_date'] : null;
 	}
 
@@ -153,17 +175,19 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function export_data($limit = 100, $offset = 0, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_user_activity_etl');
+		$sql = "SELECT * FROM sas_user_activity_etl";
+		$params = [];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " WHERE extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('id', 'DESC');
-		$this->db->limit($limit, $offset);
+		$sql .= " ORDER BY id DESC LIMIT ? OFFSET ?";
+		$params[] = $limit;
+		$params[] = $offset;
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->result_array();
 	}
 
@@ -175,13 +199,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		if (!$this->db->table_exists('sas_etl_logs')) {
 			return [];
 		}
-		$this->db->select('*');
-		$this->db->from('sas_etl_logs');
-		$this->db->where('process_name', 'user_activity_etl');
-		$this->db->order_by('created_at', 'DESC');
-		$this->db->limit($limit, $offset);
-		
-		$query = $this->db->get();
+		$sql = "SELECT * FROM sas_etl_logs WHERE process_name = ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
+		$query = $this->db->query($sql, ['user_activity_etl', $limit, $offset]);
 		return $query->result_array();
 	}
 
@@ -190,10 +209,12 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function clear_data($date)
 	{
-		$this->db->where('extraction_date', $date);
-		$this->db->delete('sas_user_activity_etl');
+		$sql = "DELETE FROM sas_user_activity_etl WHERE extraction_date = ?";
+		$this->db->query($sql, [$date]);
 		
-		return $this->db->affected_rows();
+		// Get affected rows using custom SQL
+		$affected_rows = $this->db->affected_rows();
+		return $affected_rows;
 	}
 
 	/**
@@ -220,16 +241,18 @@ class sas_user_activity_etl_model extends CI_Model {
 		foreach ($tables as $table) {
 			if ($this->db->table_exists($table)) {
 				// count before truncate to report cleared rows
-				$count_before = (int) $this->db->count_all($table);
+				$count_sql = "SELECT COUNT(*) as count FROM $table";
+				$count_query = $this->db->query($count_sql);
+				$count_before = (int) $count_query->row()->count;
 				$summary['tables'][$table] = $count_before;
 				$summary['total_affected'] += $count_before;
 				
 				// prefer TRUNCATE for speed; fallback to DELETE if needed
 				try {
-					$this->db->truncate($table);
+					$truncate_sql = "TRUNCATE TABLE $table";
+					$this->db->query($truncate_sql);
 				} catch (Exception $e) {
-					$this->db->where('1 = 1');
-					$this->db->delete($table);
+					$this->db->query("DELETE FROM $table WHERE 1=1");
 				}
 			} else {
 				log_message('info', 'Table does not exist, skipping: ' . $table);
@@ -247,18 +270,17 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_activity_counts($course_id, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_activity_counts_etl');
-		$this->db->where('courseid', $course_id);
+		$sql = "SELECT * FROM sas_activity_counts_etl WHERE courseid = ?";
+		$params = [$course_id];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('extraction_date', 'DESC');
-		$this->db->limit(1);
+		$sql .= " ORDER BY extraction_date DESC LIMIT 1";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->row_array();
 	}
 
@@ -267,18 +289,17 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_user_counts($course_id, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_user_counts_etl');
-		$this->db->where('courseid', $course_id);
+		$sql = "SELECT * FROM sas_user_counts_etl WHERE courseid = ?";
+		$params = [$course_id];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('extraction_date', 'DESC');
-		$this->db->limit(1);
+		$sql .= " ORDER BY extraction_date DESC LIMIT 1";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->row_array();
 	}
 
@@ -287,18 +308,17 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_course_summary($course_id, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_course_summary');
-		$this->db->where('course_id', $course_id);
+		$sql = "SELECT * FROM sas_course_summary WHERE course_id = ?";
+		$params = [$course_id];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('extraction_date', 'DESC');
-		$this->db->limit(1);
+		$sql .= " ORDER BY extraction_date DESC LIMIT 1";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->row_array();
 	}
 
@@ -307,17 +327,19 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_student_profiles($limit = 100, $offset = 0, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_student_profile');
+		$sql = "SELECT * FROM sas_student_profile";
+		$params = [];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " WHERE extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('user_id', 'ASC');
-		$this->db->limit($limit, $offset);
+		$sql .= " ORDER BY user_id ASC LIMIT ? OFFSET ?";
+		$params[] = $limit;
+		$params[] = $offset;
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->result_array();
 	}
 
@@ -326,21 +348,22 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_student_quiz_details($user_id, $course_id = null, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_student_quiz_detail');
-		$this->db->where('user_id', $user_id);
+		$sql = "SELECT * FROM sas_student_quiz_detail WHERE user_id = ?";
+		$params = [$user_id];
 		
 		if ($course_id) {
-			$this->db->where('course_id', $course_id);
+			$sql .= " AND course_id = ?";
+			$params[] = $course_id;
 		}
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('timestart', 'DESC');
+		$sql .= " ORDER BY timestart DESC";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->result_array();
 	}
 
@@ -349,21 +372,22 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_student_assignment_details($user_id, $course_id = null, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_student_assignment_detail');
-		$this->db->where('user_id', $user_id);
+		$sql = "SELECT * FROM sas_student_assignment_detail WHERE user_id = ?";
+		$params = [$user_id];
 		
 		if ($course_id) {
-			$this->db->where('course_id', $course_id);
+			$sql .= " AND course_id = ?";
+			$params[] = $course_id;
 		}
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('timecreated', 'DESC');
+		$sql .= " ORDER BY timecreated DESC";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->result_array();
 	}
 
@@ -372,21 +396,22 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_student_resource_access($user_id, $course_id = null, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_student_resource_access');
-		$this->db->where('user_id', $user_id);
+		$sql = "SELECT * FROM sas_student_resource_access WHERE user_id = ?";
+		$params = [$user_id];
 		
 		if ($course_id) {
-			$this->db->where('course_id', $course_id);
+			$sql .= " AND course_id = ?";
+			$params[] = $course_id;
 		}
 		
 		if ($date) {
-			$this->db->where('access_date', $date);
+			$sql .= " AND access_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('access_time', 'DESC');
+		$sql .= " ORDER BY access_time DESC";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->result_array();
 	}
 
@@ -395,17 +420,19 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_raw_logs($limit = 100, $offset = 0, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_raw_log');
+		$sql = "SELECT * FROM sas_raw_log";
+		$params = [];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " WHERE extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('time', 'DESC');
-		$this->db->limit($limit, $offset);
+		$sql .= " ORDER BY time DESC LIMIT ? OFFSET ?";
+		$params[] = $limit;
+		$params[] = $offset;
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->result_array();
 	}
 
@@ -414,18 +441,17 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_course_activity_summary($course_id, $date = null)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_course_activity_summary');
-		$this->db->where('course_id', $course_id);
+		$sql = "SELECT * FROM sas_course_activity_summary WHERE course_id = ?";
+		$params = [$course_id];
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		
-		$this->db->order_by('extraction_date', 'DESC');
-		$this->db->limit(1);
+		$sql .= " ORDER BY extraction_date DESC LIMIT 1";
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		return $query->row_array();
 	}
 
@@ -434,24 +460,25 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_user_activity_etl($course_id = null, $date = null, $limit = 100, $offset = 0)
 	{
-		$this->db->select('*');
-		$this->db->from('sas_user_activity_etl');
+		$sql = "SELECT * FROM sas_user_activity_etl WHERE course_id IS NOT NULL";
+		$params = [];
 
-		// Filter records where course_id is not null
-		$this->db->where('course_id IS NOT NULL');
 		if ($course_id) {
-			$this->db->where('course_id', $course_id);
+			$sql .= " AND course_id = ?";
+			$params[] = $course_id;
 		}
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		// If date is null, no date filter is applied - returns all data
 		
-		$this->db->order_by('id', 'DESC');
-		$this->db->limit($limit, $offset);
+		$sql .= " ORDER BY id DESC LIMIT ? OFFSET ?";
+		$params[] = $limit;
+		$params[] = $offset;
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		
 		// Log for debugging
 		log_message('debug', 'get_user_activity_etl - course_id: ' . $course_id . ', date: ' . $date . ', limit: ' . $limit . ', offset: ' . $offset . ', result_count: ' . count($query->result_array()));
@@ -464,22 +491,21 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_user_activity_total_count($course_id = null, $date = null)
 	{
-		$this->db->select('COUNT(*) as total');
-		$this->db->from('sas_user_activity_etl');
+		$sql = "SELECT COUNT(*) as total FROM sas_user_activity_etl WHERE course_id IS NOT NULL";
+		$params = [];
 
-		// Filter records where course_id is not null
-		$this->db->where('course_id IS NOT NULL');
-		
 		if ($course_id) {
-			$this->db->where('course_id', $course_id);
+			$sql .= " AND course_id = ?";
+			$params[] = $course_id;
 		}
 		
 		if ($date) {
-			$this->db->where('extraction_date', $date);
+			$sql .= " AND extraction_date = ?";
+			$params[] = $date;
 		}
 		// If date is null, no date filter is applied - returns total count of all data
 		
-		$query = $this->db->get();
+		$query = $this->db->query($sql, $params);
 		$total = $query->row()->total;
 		
 		// Log for debugging
@@ -525,8 +551,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_activity_counts_all($start_date = null, $end_date = null, $limit = null, $offset = 0)
 	{
-		// Use moodle database for source data
-		$moodle_db = $this->load->database('moodle', TRUE);
+		// Use custom SQL with database prefix for moodle tables
 		
 		$sql = "
 			SELECT
@@ -556,7 +581,8 @@ class sas_user_activity_etl_model extends CI_Model {
 			$sql .= " LIMIT {$limit} OFFSET {$offset}";
 		}
 		
-		$query = $moodle_db->query($sql);
+		// Execute query using main database connection
+		$query = $this->db->query($sql);
 		return $query->result_array();
 	}
 
@@ -565,8 +591,7 @@ class sas_user_activity_etl_model extends CI_Model {
 	 */
 	public function get_user_counts_all($start_date = null, $end_date = null, $limit = null, $offset = 0)
 	{
-		// Use moodle database for source data
-		$moodle_db = $this->load->database('moodle', TRUE);
+		// Use custom SQL with database prefix for moodle tables
 		
 		$sql = "
 			SELECT
@@ -591,7 +616,8 @@ class sas_user_activity_etl_model extends CI_Model {
 			$sql .= " LIMIT {$limit} OFFSET {$offset}";
 		}
 		
-		$query = $moodle_db->query($sql);
+		// Execute query using main database connection
+		$query = $this->db->query($sql);
 		return $query->result_array();
 	}
 
@@ -757,8 +783,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		}
 		
 		// Clear existing data for this date
-		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('sas_user_activity_etl');
+		$sql = "DELETE FROM sas_user_activity_etl WHERE extraction_date = ?";
+		$this->db->query($sql, [$extraction_date]);
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -778,7 +804,15 @@ class sas_user_activity_etl_model extends CI_Model {
 				'created_at' => date('Y-m-d H:i:s'),
 				'updated_at' => date('Y-m-d H:i:s')
 			];
-			$this->db->insert('sas_user_activity_etl', $etl_data);
+			$sql = "INSERT INTO sas_user_activity_etl (course_id, num_teachers, num_students, file_views, video_views, forum_views, quiz_views, assignment_views, url_views, total_views, avg_activity_per_student_per_day, active_days, extraction_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+			$this->db->query($sql, [
+				$etl_data['course_id'], $etl_data['num_teachers'], $etl_data['num_students'],
+				$etl_data['file_views'], $etl_data['video_views'], $etl_data['forum_views'],
+				$etl_data['quiz_views'], $etl_data['assignment_views'], $etl_data['url_views'],
+				$etl_data['total_views'], $etl_data['avg_activity_per_student_per_day'],
+				$etl_data['active_days'], $etl_data['extraction_date'],
+				$etl_data['created_at'], $etl_data['updated_at']
+			]);
 		}
 		
 		return true;
@@ -798,8 +832,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		}
 		
 		// Clear existing data for this date
-		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('sas_activity_counts_etl');
+		$sql = "DELETE FROM sas_activity_counts_etl WHERE extraction_date = ?";
+		$this->db->query($sql, [$extraction_date]);
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -816,7 +850,13 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('sas_activity_counts_etl', $etl_data);
+			$sql = "INSERT INTO sas_activity_counts_etl (courseid, file_views, video_views, forum_views, quiz_views, assignment_views, url_views, active_days, extraction_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+			$this->db->query($sql, [
+				$etl_data['courseid'], $etl_data['file_views'], $etl_data['video_views'],
+				$etl_data['forum_views'], $etl_data['quiz_views'], $etl_data['assignment_views'],
+				$etl_data['url_views'], $etl_data['active_days'], $etl_data['extraction_date'],
+				$etl_data['created_at'], $etl_data['updated_at']
+			]);
 		}
 		
 		return true;
@@ -836,8 +876,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		}
 		
 		// Clear existing data for this date
-		$this->db->where('extraction_date', $extraction_date);
-		$this->db->delete('sas_user_counts_etl');
+		$sql = "DELETE FROM sas_user_counts_etl WHERE extraction_date = ?";
+		$this->db->query($sql, [$extraction_date]);
 		
 		foreach ($data as $row) {
 			$etl_data = [
@@ -849,7 +889,11 @@ class sas_user_activity_etl_model extends CI_Model {
 				'updated_at' => date('Y-m-d H:i:s')
 			];
 			
-			$this->db->insert('sas_user_counts_etl', $etl_data);
+			$sql = "INSERT INTO sas_user_counts_etl (courseid, num_students, num_teachers, extraction_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)";
+			$this->db->query($sql, [
+				$etl_data['courseid'], $etl_data['num_students'], $etl_data['num_teachers'],
+				$etl_data['extraction_date'], $etl_data['created_at'], $etl_data['updated_at']
+			]);
 		}
 		
 		return true;
@@ -871,9 +915,10 @@ class sas_user_activity_etl_model extends CI_Model {
 		foreach ($tables as $table) {
 			// Check if table exists before trying to delete from it
 			if ($this->db->table_exists($table)) {
-				$this->db->where('extraction_date', $date);
-				$this->db->delete($table);
-				$total_affected += $this->db->affected_rows();
+				$sql = "DELETE FROM $table WHERE extraction_date = ?";
+				$this->db->query($sql, [$date]);
+				$affected_rows = $this->db->affected_rows();
+				$total_affected += $affected_rows;
 			} else {
 				log_message('info', 'Table does not exist, skipping: ' . $table);
 			}
@@ -938,10 +983,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		} catch (Exception $e) {
 			// Update scheduler status to failed
 			if (isset($scheduler_data['id'])) {
-				$this->db->where('id', $scheduler_data['id']);
-				$this->db->update('sas_log_scheduler', [
-					'status' => 3, // Failed
-				]);
+				$update_sql = "UPDATE sas_log_scheduler SET status = ? WHERE id = ?";
+				$this->db->query($update_sql, [3, $scheduler_data['id']]);
 			}
 			
 			throw $e;
@@ -956,12 +999,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		if (!$this->db->table_exists('sas_log_scheduler')) {
 			return [];
 		}
-		$this->db->select('*');
-		$this->db->from('sas_log_scheduler');
-		$this->db->order_by('id', 'DESC');
-		$this->db->limit(1);
-		
-		$query = $this->db->get();
+		$sql = "SELECT * FROM sas_log_scheduler ORDER BY id DESC LIMIT 1";
+		$query = $this->db->query($sql);
 		return $query->row_array();
 	}
 
@@ -996,7 +1035,11 @@ class sas_user_activity_etl_model extends CI_Model {
 		];
 		
 		log_message('info', 'First date extraction initialized for user_activity batch');
-		return $this->db->insert('sas_log_scheduler', $data);
+		$sql = "INSERT INTO sas_log_scheduler (batch_name, offset, numrow, status, limit_size, start_date, end_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+		return $this->db->query($sql, [
+			$data['batch_name'], $data['offset'], $data['numrow'], $data['status'],
+			$data['limit_size'], $data['start_date'], $data['end_date'], $data['created_at']
+		]);
 	}
 
 	/**
@@ -1044,12 +1087,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		if (!$this->db->table_exists('sas_log_scheduler')) {
 			return null;
 		}
-		$this->db->select('id');
-		$this->db->from('sas_log_scheduler');
-		$this->db->order_by('id', 'DESC');
-		$this->db->limit(1);
-		
-		$query = $this->db->get();
+		$sql = "SELECT id FROM sas_log_scheduler ORDER BY id DESC LIMIT 1";
+		$query = $this->db->query($sql);
 		$result = $query->row();
 		return $result ? $result->id : null;
 	}
@@ -1068,11 +1107,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		$scheduler_id = $this->get_latest_scheduler_id();
 		
 		if ($scheduler_id) {
-			$this->db->where('id', $scheduler_id);
-			$this->db->update('sas_log_scheduler', [
-				'status' => 1, // Finished (completed)
-				'end_date' => date('Y-m-d H:i:s'),
-			]);
+			$sql = "UPDATE sas_log_scheduler SET status = ?, end_date = ? WHERE id = ?";
+			$this->db->query($sql, [1, date('Y-m-d H:i:s'), $scheduler_id]);
 			
 			log_message('info', 'Scheduler status updated to finished (1) for date: ' . $extraction_date);
 		} else {
@@ -1103,7 +1139,11 @@ class sas_user_activity_etl_model extends CI_Model {
 			'created_at' => date('Y-m-d H:i:s')
 		];
 		
-		$result = $this->db->insert('sas_log_scheduler', $data);
+		$sql = "INSERT INTO sas_log_scheduler (batch_name, offset, numrow, status, limit_size, start_date, end_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+		$result = $this->db->query($sql, [
+			$data['batch_name'], $data['offset'], $data['numrow'], $data['status'],
+			$data['limit_size'], $data['start_date'], $data['end_date'], $data['created_at']
+		]);
 		
 		if ($result) {
 			log_message('info', 'New scheduler record created for user_activity batch with date: ' . $extraction_date);
@@ -1130,11 +1170,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		}
 		
 		if ($scheduler_id) {
-			$this->db->where('id', $scheduler_id);
-			$this->db->update('sas_log_scheduler', [
-				'status' => 2, // Inprogress (running)
-				'start_date' => date('Y-m-d H:i:s'),
-			]);
+			$sql = "UPDATE sas_log_scheduler SET status = ?, start_date = ? WHERE id = ?";
+			$this->db->query($sql, [2, date('Y-m-d H:i:s'), $scheduler_id]);
 			
 			log_message('info', 'Scheduler status updated to inprogress (2) for date: ' . $extraction_date);
 		} else {
@@ -1158,11 +1195,8 @@ class sas_user_activity_etl_model extends CI_Model {
 		$scheduler_id = $this->get_latest_scheduler_id();
 		
 		if ($scheduler_id) {
-			$this->db->where('id', $scheduler_id);
-			$this->db->update('sas_log_scheduler', [
-				'status' => 3, // Failed
-				'end_date' => date('Y-m-d H:i:s'),
-			]);
+			$sql = "UPDATE sas_log_scheduler SET status = ?, end_date = ? WHERE id = ?";
+			$this->db->query($sql, [3, date('Y-m-d H:i:s'), $scheduler_id]);
 			
 			log_message('error', 'Scheduler status updated to failed (3) for date: ' . $extraction_date . ' - Error: ' . $error_message);
 		} else {

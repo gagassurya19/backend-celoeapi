@@ -161,10 +161,8 @@ class etl_sas extends REST_Controller {
 			$this->load->database();
 			
 			// Get all running SAS ETL processes (status = 'running')
-			$this->db->from('sas_etl_logs');
-			$this->db->where('process_name', 'user_activity_etl');
-			$this->db->where('status', 'running');
-			$running_processes = $this->db->get()->result_array();
+			$sql = "SELECT * FROM sas_etl_logs WHERE process_name = ? AND status = ?";
+			$running_processes = $this->db->query($sql, ['user_activity_etl', 'running'])->result_array();
 			
 			if (empty($running_processes)) {
 				$this->response([
@@ -181,12 +179,13 @@ class etl_sas extends REST_Controller {
 			foreach ($running_processes as $process) {
 				try {
 					// Update log status to failed
-					$this->db->where('id', $process['id']);
-					$this->db->update('sas_etl_logs', [
-						'status' => 'failed',
-						'end_time' => date('Y-m-d H:i:s'),
-						'message' => 'Force stopped by API - data may be incomplete',
-						'duration_seconds' => time() - strtotime($process['start_time'])
+					$sql = "UPDATE sas_etl_logs SET status = ?, end_time = ?, message = ?, duration_seconds = ? WHERE id = ?";
+					$this->db->query($sql, [
+						'failed',
+						date('Y-m-d H:i:s'),
+						'Force stopped by API - data may be incomplete',
+						time() - strtotime($process['start_time']),
+						$process['id']
 					]);
 					
 					$stopped_count++;
@@ -276,18 +275,21 @@ class etl_sas extends REST_Controller {
 	{
 		try {
 			$this->load->database();
-			$limit = (int) ($this->input->get('limit') ?: 50);
-			$offset = (int) ($this->input->get('offset') ?: 0);
-			$status = $this->input->get('status'); // optional: running/completed/failed
+					$limit = (int) ($this->input->get('limit') ?: 50);
+		$offset = (int) ($this->input->get('offset') ?: 0);
+		$status = $this->input->get('status'); // optional: running/completed/failed
 
-			$this->db->from('sas_etl_logs');
-			$this->db->where('process_name', 'user_activity_etl');
-			if (!empty($status)) {
-				$this->db->where('status', $status);
-			}
-			$this->db->order_by('id', 'DESC');
-			$this->db->limit($limit, $offset);
-			$query = $this->db->get();
+		$sql = "SELECT * FROM sas_etl_logs WHERE process_name = ?";
+		$params = ['user_activity_etl'];
+		if (!empty($status)) {
+			$sql .= " AND status = ?";
+			$params[] = $status;
+		}
+		$sql .= " ORDER BY id DESC LIMIT ? OFFSET ?";
+		$params[] = $limit;
+		$params[] = $offset;
+		
+		$query = $this->db->query($sql, $params);
 
 			$this->response([
 				'status' => true,
@@ -312,11 +314,8 @@ class etl_sas extends REST_Controller {
 			$this->load->database();
 			
 			// Get latest log entry
-			$this->db->from('sas_etl_logs');
-			$this->db->where('process_name', 'user_activity_etl');
-			$this->db->order_by('id', 'DESC');
-			$this->db->limit(1);
-			$latest_log = $this->db->get()->row_array();
+			$sql = "SELECT * FROM sas_etl_logs WHERE process_name = ? ORDER BY id DESC LIMIT 1";
+			$latest_log = $this->db->query($sql, ['user_activity_etl'])->row_array();
 			
 			if (!$latest_log) {
 				$this->response([
@@ -331,21 +330,18 @@ class etl_sas extends REST_Controller {
 			}
 			
 			// Get running count
-			$this->db->from('sas_etl_logs');
-			$this->db->where('process_name', 'user_activity_etl');
-			$this->db->where('status', 'running');
-			$running_count = $this->db->count_all_results();
+			$sql = "SELECT COUNT(*) as count FROM sas_etl_logs WHERE process_name = ? AND status = ?";
+			$running_result = $this->db->query($sql, ['user_activity_etl', 'running'])->row();
+			$running_count = $running_result->count;
 			
 			// Get recent activity (last 7 days)
-			$this->db->from('sas_etl_logs');
-			$this->db->where('process_name', 'user_activity_etl');
-			$this->db->where('start_time >=', date('Y-m-d H:i:s', strtotime('-7 days')));
-			$recent_count = $this->db->count_all_results();
+			$sql = "SELECT COUNT(*) as count FROM sas_etl_logs WHERE process_name = ? AND start_time >= ?";
+			$recent_result = $this->db->query($sql, ['user_activity_etl', date('Y-m-d H:i:s', strtotime('-7 days'))])->row();
+			$recent_count = $recent_result->count;
 			
 			// Get watermark data (last extracted and next to extract)
-			$this->db->from('sas_etl_watermarks');
-			$this->db->where('process_name', 'user_activity_etl');
-			$watermark = $this->db->get()->row_array();
+			$sql = "SELECT * FROM sas_etl_watermarks WHERE process_name = ?";
+			$watermark = $this->db->query($sql, ['user_activity_etl'])->row_array();
 			
 			$watermark_info = null;
 			if ($watermark) {

@@ -420,10 +420,20 @@ class Cli extends CI_Controller {
                 // Upsert into sas_courses
                 $exists = $this->db->query("SELECT course_id FROM sas_courses WHERE course_id = ?", [$course_id])->num_rows() > 0;
                 if ($exists) {
-                    $this->db->where('course_id', $course_id)->update('sas_courses', $data);
+                    $sql = "UPDATE sas_courses SET course_name = ?, course_code = ?, course_category = ?, course_start_date = ?, course_end_date = ?, course_status = ?, updated_at = ? WHERE course_id = ?";
+                    $this->db->query($sql, [
+                        $data['course_name'], $data['course_code'], $data['course_category'],
+                        $data['course_start_date'], $data['course_end_date'], $data['course_status'],
+                        $data['updated_at'], $course_id
+                    ]);
                 } else {
                     $data['created_at'] = date('Y-m-d H:i:s');
-                    $this->db->insert('sas_courses', $data);
+                    $sql = "INSERT INTO sas_courses (course_id, course_name, course_code, course_category, course_start_date, course_end_date, course_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $this->db->query($sql, [
+                        $course_id, $data['course_name'], $data['course_code'], $data['course_category'],
+                        $data['course_start_date'], $data['course_end_date'], $data['course_status'],
+                        $data['created_at'], $data['updated_at']
+                    ]);
                 }
             }
             echo "SAS courses synced: ".count($courses)."\n";
@@ -1219,8 +1229,8 @@ class Cli extends CI_Controller {
             // Update course_id in cp_student_quiz_detail
             $updated = 0;
             foreach ($quizCourseMap as $quizId => $courseId) {
-                $this->db->where('quiz_id', $quizId);
-                $this->db->update('cp_student_quiz_detail', ['course_id' => $courseId]);
+                $sql = "UPDATE cp_student_quiz_detail SET course_id = ? WHERE quiz_id = ?";
+                $this->db->query($sql, [$courseId, $quizId]);
                 $rowCount = $this->db->affected_rows();
                 $updated += $rowCount;
                 echo "  Updated $rowCount records for quiz $quizId (course $courseId)\n";
@@ -1410,11 +1420,8 @@ class Cli extends CI_Controller {
                 echo "\n--- Applying mapping ---\n";
                 $updated = 0;
                 foreach ($mapping as $detailId => $map) {
-                    $this->db->where('id', $detailId);
-                    $this->db->update('cp_student_quiz_detail', [
-                        'quiz_id' => $map['new_quiz_id'],
-                        'course_id' => $map['course_id']
-                    ]);
+                    $sql = "UPDATE cp_student_quiz_detail SET quiz_id = ?, course_id = ? WHERE id = ?";
+                    $this->db->query($sql, [$map['new_quiz_id'], $map['course_id'], $detailId]);
                     $rowCount = $this->db->affected_rows();
                     if ($rowCount > 0) {
                         $updated++;
@@ -1521,7 +1528,13 @@ class Cli extends CI_Controller {
                                 $newRecord['user_id'] = $existingDetail['user_id'] + $i; // Simple increment for demo
                                 $newRecord['created_at'] = date('Y-m-d H:i:s');
                                 
-                                $this->db->insert('cp_student_quiz_detail', $newRecord);
+                                $sql = "INSERT INTO cp_student_quiz_detail (quiz_id, user_id, nim, full_name, waktu_mulai, waktu_selesai, durasi_waktu, jumlah_soal, jumlah_dikerjakan, nilai, course_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $this->db->query($sql, [
+                    $newRecord['quiz_id'], $newRecord['user_id'], $newRecord['nim'],
+                    $newRecord['full_name'], $newRecord['waktu_mulai'], $newRecord['waktu_selesai'],
+                    $newRecord['durasi_waktu'], $newRecord['jumlah_soal'], $newRecord['jumlah_dikerjakan'],
+                    $newRecord['nilai'], $newRecord['course_id'], $newRecord['created_at'], $newRecord['updated_at']
+                ]);
                                 echo "  Added duplicate record for user " . $newRecord['user_id'] . "\n";
                             }
                         }
@@ -1552,9 +1565,8 @@ class Cli extends CI_Controller {
                     
                     if ($quiz25['attempted_count'] == 0 && $quiz25['detail_count'] > 0) {
                         echo "Quiz 25 has no attempts in summary but has detail records. Removing detail records.\n";
-                        $this->db->where('quiz_id', 25);
-                        $this->db->where('course_id', 3);
-                        $deleted = $this->db->delete('cp_student_quiz_detail');
+                                        $sql = "DELETE FROM cp_student_quiz_detail WHERE quiz_id = ? AND course_id = ?";
+                $deleted = $this->db->query($sql, [25, 3]);
                         echo "Deleted $deleted detail records for Quiz 25\n";
                     }
                 }

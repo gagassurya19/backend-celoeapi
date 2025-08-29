@@ -89,10 +89,8 @@ class etl_cp extends REST_Controller {
 			$this->load->database();
 			
 			// Get all running CP ETL processes (status = 2 for inprogress)
-			$this->db->from('cp_etl_logs');
-			$this->db->where('status', 2);
-			$this->db->where('type', 'run_cp_backfill');
-			$running_processes = $this->db->get()->result_array();
+			$sql = "SELECT * FROM cp_etl_logs WHERE status = ? AND type = ?";
+			$running_processes = $this->db->query($sql, [2, 'run_cp_backfill'])->result_array();
 			
 			if (empty($running_processes)) {
 				$this->response([
@@ -109,12 +107,13 @@ class etl_cp extends REST_Controller {
 			foreach ($running_processes as $process) {
 				try {
 					// Update log status to failed (status = 3)
-					$this->db->where('id', $process['id']);
-					$this->db->update('cp_etl_logs', [
-						'status' => 3, // failed
-						'end_date' => date('Y-m-d H:i:s'),
-						'message' => 'Force stopped by API - data may be incomplete',
-						'duration_seconds' => time() - strtotime($process['start_date'])
+					$sql = "UPDATE cp_etl_logs SET status = ?, end_date = ?, message = ?, duration_seconds = ? WHERE id = ?";
+					$this->db->query($sql, [
+						3, // failed
+						date('Y-m-d H:i:s'),
+						'Force stopped by API - data may be incomplete',
+						time() - strtotime($process['start_date']),
+						$process['id']
 					]);
 					
 					$stopped_count++;
@@ -195,19 +194,10 @@ class etl_cp extends REST_Controller {
 			];
 
 			// Log start (inprogress=2)
-			$this->db->insert('cp_etl_logs', [
-				'offset' => 0,
-				'numrow' => 0,
-				'type' => 'clear',
-				' message' => 'CP clean start',
-				'requested_start_date' => null,
-				'extracted_start_date' => null,
-				'extracted_end_date' => null,
-				'status' => 2,
-				'start_date' => date('Y-m-d H:i:s'),
-				'end_date' => null,
-				'duration_seconds' => null,
-				'created_at' => date('Y-m-d H:i:s')
+			$sql = "INSERT INTO cp_etl_logs (offset, numrow, type, message, requested_start_date, extracted_start_date, extracted_end_date, status, start_date, end_date, duration_seconds, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+			$this->db->query($sql, [
+				0, 0, 'clear', 'CP clean start', null, null, null, 2, 
+				date('Y-m-d H:i:s'), null, null, date('Y-m-d H:i:s')
 			]);
 			$log_id = $this->db->insert_id();
 
@@ -218,15 +208,13 @@ class etl_cp extends REST_Controller {
 				$count_before = (int)$this->db->count_all($tbl);
 				$summary['tables'][$tbl] = $count_before;
 				$summary['total_affected'] += $count_before;
-				try { $this->db->truncate($tbl); } catch (Exception $e) { $this->db->where('1=1'); $this->db->delete($tbl); }
+				try { $this->db->truncate($tbl); } catch (Exception $e) { $this->db->query("DELETE FROM $tbl WHERE 1=1"); }
 			}
 
 			// Finish log (finished=1)
-			$this->db->where('id', $log_id)->update('cp_etl_logs', [
-				'numrow' => $summary['total_affected'],
-				'status' => 1,
-				'end_date' => date('Y-m-d H:i:s'),
-				' message' => 'CP clean completed'
+			$sql = "UPDATE cp_etl_logs SET numrow = ?, status = ?, end_date = ?, message = ? WHERE id = ?";
+			$this->db->query($sql, [
+				$summary['total_affected'], 1, date('Y-m-d H:i:s'), 'CP clean completed', $log_id
 			]);
 
 			$this->response([
@@ -237,11 +225,8 @@ class etl_cp extends REST_Controller {
 			], REST_Controller::HTTP_OK);
 		} catch (Exception $e) {
 			if ($log_id) {
-				$this->db->where('id', $log_id)->update('cp_etl_logs', [
-					'status' => 3,
-					'end_date' => date('Y-m-d H:i:s'),
-					' message' => $e->getMessage()
-				]);
+				$sql = "UPDATE cp_etl_logs SET status = ?, end_date = ?, message = ? WHERE id = ?";
+				$this->db->query($sql, [3, date('Y-m-d H:i:s'), $e->getMessage(), $log_id]);
 			}
 			$this->response([
 				'status' => false,
@@ -257,17 +242,21 @@ class etl_cp extends REST_Controller {
 	{
 		try {
 			$this->load->database();
-			$limit = (int) ($this->input->get('limit') ?: 50);
-			$offset = (int) ($this->input->get('offset') ?: 0);
-			$status = $this->input->get('status'); // optional: 1 finished, 2 inprogress, 3 failed
+					$limit = (int) ($this->input->get('limit') ?: 50);
+		$offset = (int) ($this->input->get('offset') ?: 0);
+		$status = $this->input->get('status'); // optional: 1 finished, 2 inprogress, 3 failed
 
-			$this->db->from('cp_etl_logs');
-			if (!empty($status)) {
-				$this->db->where('status', (int)$status);
-			}
-			$this->db->order_by('id', 'DESC');
-			$this->db->limit($limit, $offset);
-			$query = $this->db->get();
+		$sql = "SELECT * FROM cp_etl_logs";
+		$params = [];
+		if (!empty($status)) {
+			$sql .= " WHERE status = ?";
+			$params[] = (int)$status;
+		}
+		$sql .= " ORDER BY id DESC LIMIT ? OFFSET ?";
+		$params[] = $limit;
+		$params[] = $offset;
+		
+		$query = $this->db->query($sql, $params);
 
 			$this->response([
 				'status' => true,
@@ -292,10 +281,8 @@ class etl_cp extends REST_Controller {
 			$this->load->database();
 			
 			// Get latest log entry
-			$this->db->from('cp_etl_logs');
-			$this->db->order_by('id', 'DESC');
-			$this->db->limit(1);
-			$latest_log = $this->db->get()->row_array();
+			$sql = "SELECT * FROM cp_etl_logs ORDER BY id DESC LIMIT 1";
+			$latest_log = $this->db->query($sql)->row_array();
 			
 			if (!$latest_log) {
 				$this->response([
@@ -310,19 +297,18 @@ class etl_cp extends REST_Controller {
 			}
 			
 			// Get running count (status = 2 for inprogress)
-			$this->db->from('cp_etl_logs');
-			$this->db->where('status', 2);
-			$running_count = $this->db->count_all_results();
+			$sql = "SELECT COUNT(*) as count FROM cp_etl_logs WHERE status = ?";
+			$running_result = $this->db->query($sql, [2])->row();
+			$running_count = $running_result->count;
 			
 			// Get recent activity (last 7 days)
-			$this->db->from('cp_etl_logs');
-			$this->db->where('start_date >=', date('Y-m-d H:i:s', strtotime('-7 days')));
-			$recent_count = $this->db->count_all_results();
+			$sql = "SELECT COUNT(*) as count FROM cp_etl_logs WHERE start_date >= ?";
+			$recent_result = $this->db->query($sql, [date('Y-m-d H:i:s', strtotime('-7 days'))])->row();
+			$recent_count = $recent_result->count;
 			
 			// Get watermark data (last extracted and next to extract)
-			$this->db->from('cp_etl_watermarks');
-			$this->db->where('process_name', 'cp_etl');
-			$watermark = $this->db->get()->row_array();
+			$sql = "SELECT * FROM cp_etl_watermarks WHERE process_name = ?";
+			$watermark = $this->db->query($sql, ['cp_etl'])->row_array();
 			
 			$watermark_info = null;
 			if ($watermark) {

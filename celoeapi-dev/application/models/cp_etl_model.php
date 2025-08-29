@@ -55,7 +55,8 @@ class Cp_etl_model extends CI_Model
         if (!$exists) {
             return null;
         }
-        $row = $this->db->get_where('cp_etl_watermarks', ['process_name' => $process_name])->row_array();
+        $sql = "SELECT * FROM cp_etl_watermarks WHERE process_name = ?";
+        $row = $this->db->query($sql, [$process_name])->row_array();
         return $row && isset($row['last_date']) ? $row['last_date'] : null;
     }
 
@@ -90,55 +91,57 @@ class Cp_etl_model extends CI_Model
         if ($existingLogId) {
             // Update existing log
             unset($data['message']); // Don't overwrite existing message
-            $this->db->where('id', $existingLogId)->update('cp_etl_logs', $data);
+            $sql = "UPDATE cp_etl_logs SET offset = ?, numrow = ?, status = ?, type = ?, requested_start_date = ?, extracted_start_date = ?, extracted_end_date = ?, start_date = ?, end_date = ?, duration_seconds = ?, created_at = ? WHERE id = ?";
+            $this->db->query($sql, [
+                $data['offset'], $data['numrow'], $data['status'], $data['type'], 
+                $data['requested_start_date'], $data['extracted_start_date'], 
+                $data['extracted_end_date'], $data['start_date'], $data['end_date'], 
+                $data['duration_seconds'], $data['created_at'], $existingLogId
+            ]);
             return $existingLogId;
         } else {
             // Insert new log
-            $this->db->insert('cp_etl_logs', $data);
+            $sql = "INSERT INTO cp_etl_logs (offset, numrow, status, type, message, requested_start_date, extracted_start_date, extracted_end_date, start_date, end_date, duration_seconds, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $this->db->query($sql, [
+                $data['offset'], $data['numrow'], $data['status'], $data['type'], 
+                $data['message'], $data['requested_start_date'], $data['extracted_start_date'], 
+                $data['extracted_end_date'], $data['start_date'], $data['end_date'], 
+                $data['duration_seconds'], $data['created_at']
+            ]);
             return $this->db->insert_id();
         }
     }
 
     private function mark_inprogress($logId)
     {
-        $this->db->where('id', $logId)->update('cp_etl_logs', [
-            'status' => 2,
-            'start_date' => date('Y-m-d H:i:s')
-        ]);
+        $sql = "UPDATE cp_etl_logs SET status = ?, start_date = ? WHERE id = ?";
+        $this->db->query($sql, [2, date('Y-m-d H:i:s'), $logId]);
     }
 
     private function complete_log($logId, $numrow = 0, $extractedStart = null, $extractedEnd = null)
     {
         // Compute duration if possible
-        $log = $this->db->get_where('cp_etl_logs', ['id' => $logId])->row_array();
+        $sql = "SELECT * FROM cp_etl_logs WHERE id = ?";
+        $log = $this->db->query($sql, [$logId])->row_array();
         $duration = null;
         if ($log && !empty($log['start_date'])) {
             $duration = time() - strtotime($log['start_date']);
         }
-        $this->db->where('id', $logId)->update('cp_etl_logs', [
-            'status' => 1,
-            'numrow' => $numrow,
-            'extracted_start_date' => $extractedStart,
-            'extracted_end_date' => $extractedEnd,
-            'end_date' => date('Y-m-d H:i:s'),
-            'duration_seconds' => $duration,
-        ]);
+        $sql = "UPDATE cp_etl_logs SET status = ?, numrow = ?, extracted_start_date = ?, extracted_end_date = ?, end_date = ?, duration_seconds = ? WHERE id = ?";
+        $this->db->query($sql, [1, $numrow, $extractedStart, $extractedEnd, date('Y-m-d H:i:s'), $duration, $logId]);
     }
 
     private function fail_log($logId, $message)
     {
         // Compute duration if possible
-        $log = $this->db->get_where('cp_etl_logs', ['id' => $logId])->row_array();
+        $sql = "SELECT * FROM cp_etl_logs WHERE id = ?";
+        $log = $this->db->query($sql, [$logId])->row_array();
         $duration = null;
         if ($log && !empty($log['start_date'])) {
             $duration = time() - strtotime($log['start_date']);
         }
-        $this->db->where('id', $logId)->update('cp_etl_logs', [
-            'status' => 3,
-            'message' => $message,
-            'end_date' => date('Y-m-d H:i:s'),
-            'duration_seconds' => $duration,
-        ]);
+        $sql = "UPDATE cp_etl_logs SET status = ?, message = ?, end_date = ?, duration_seconds = ? WHERE id = ?";
+        $this->db->query($sql, [3, $message, date('Y-m-d H:i:s'), $duration, $logId]);
         log_message('error', 'CP ETL failed: ' . $message);
     }
 
