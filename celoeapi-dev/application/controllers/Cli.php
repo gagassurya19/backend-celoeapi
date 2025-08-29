@@ -283,7 +283,7 @@ class Cli extends CI_Controller {
      * Run SAS ETL from a start date to catch up to yesterday with concurrency
      * Usage: php index.php cli run_student_activity_from_start 2024-01-01 2
      */
-    public function run_student_activity_from_start($start_date = null, $maybe_end_or_conc = null, $maybe_conc = null)
+    public function run_student_activity_from_start($start_date = null, $maybe_end_or_conc = null, $maybe_conc = null, $maybe_log_id = null)
     {
         try {
             if (!$start_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date)) {
@@ -293,6 +293,7 @@ class Cli extends CI_Controller {
             // Support optional end_date argument (backward compatible)
             $end_date = null;
             $concurrency = 1;
+            $log_id = null;
             if ($maybe_end_or_conc && preg_match('/^\d{4}-\d{2}-\d{2}$/', $maybe_end_or_conc)) {
                 $end_date = $maybe_end_or_conc;
                 if ($maybe_conc !== null && is_numeric($maybe_conc)) {
@@ -300,6 +301,10 @@ class Cli extends CI_Controller {
                 }
             } else if ($maybe_end_or_conc !== null) {
                 $concurrency = intval($maybe_end_or_conc);
+            }
+            // Last optional argument can be log_id
+            if ($maybe_log_id !== null && is_numeric($maybe_log_id)) {
+                $log_id = intval($maybe_log_id);
             }
 
             $target_date = $end_date ?: date('Y-m-d', strtotime('-1 day'));
@@ -309,7 +314,7 @@ class Cli extends CI_Controller {
             }
 
             $conc = max(1, intval($concurrency));
-            echo "Starting SAS catch-up from $start_date to $target_date with concurrency=$conc...\n";
+            echo "Starting SAS catch-up from $start_date to $target_date with concurrency=$conc" . ($log_id ? ", log_id=$log_id" : "") . "...\n";
 
             $this->load->model('sas_user_activity_etl_model', 'm_user_activity');
             $this->load->model('sas_actvity_counts_model', 'm_activity_counts');
@@ -357,25 +362,35 @@ class Cli extends CI_Controller {
             }
 
             echo "Catch-up done. Days processed: $processed\n";
-            // Log completion summary to SAS logs
-            $this->m_user_activity->update_etl_status('completed', date('Y-m-d', strtotime('-1 day')), [
+            // Finalize the same log row if provided; else write a summary row
+            $summaryParams = [
                 'trigger' => 'cli_run_student_activity_from_start',
                 'message' => 'SAS catch-up completed',
                 'start_date' => $start_date,
                 'end_date' => $target_date,
                 'concurrency' => $conc,
                 'days_processed' => $processed
-            ]);
+            ];
+            if ($log_id && method_exists($this->m_user_activity, 'finish_etl_log')) {
+                $this->m_user_activity->finish_etl_log($log_id, 'completed', $summaryParams);
+            } else {
+                $this->m_user_activity->update_etl_status('completed', date('Y-m-d', strtotime('-1 day')), $summaryParams);
+            }
         } catch (Exception $e) {
             echo "SAS catch-up failed: " . $e->getMessage() . "\n";
             // Log failure
             if ($start_date) {
-                $this->m_user_activity->update_etl_status('failed', date('Y-m-d', strtotime('-1 day')), [
+                $failParams = [
                     'trigger' => 'cli_run_student_activity_from_start',
                     'message' => 'SAS catch-up failed',
                     'error' => $e->getMessage(),
                     'start_date' => $start_date
-                ]);
+                ];
+                if (isset($log_id) && $log_id && method_exists($this->m_user_activity, 'finish_etl_log')) {
+                    $this->m_user_activity->finish_etl_log($log_id, 'failed', $failParams);
+                } else {
+                    $this->m_user_activity->update_etl_status('failed', date('Y-m-d', strtotime('-1 day')), $failParams);
+                }
             }
             exit(1);
         }
@@ -406,33 +421,21 @@ class Cli extends CI_Controller {
                 $course_id = (int)$row['course_id'];
                 $program_id = isset($row['program_id']) ? (int)$row['program_id'] : null;
                 $faculty_id = ($program_id && isset($catParent[$program_id])) ? (int)$catParent[$program_id] : null;
-                $data = [
-                    'course_id' => $course_id,
-                    'subject_id' => $row['subject_id'],
-                    'course_name' => $row['course_name'],
-                    'course_shortname' => $row['course_shortname'],
-                    'program_id' => $program_id,
-                    'faculty_id' => $faculty_id,
-                    'visible' => 1,
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ];
 
-                // Upsert into sas_courses
+                $now = date('Y-m-d H:i:s');
+                // Upsert only columns that exist in sas_courses schema
                 $exists = $this->db->query("SELECT course_id FROM sas_courses WHERE course_id = ?", [$course_id])->num_rows() > 0;
                 if ($exists) {
-                    $sql = "UPDATE sas_courses SET course_name = ?, course_code = ?, course_category = ?, course_start_date = ?, course_end_date = ?, course_status = ?, updated_at = ? WHERE course_id = ?";
+                    $sql = "UPDATE sas_courses SET subject_id = ?, course_name = ?, course_shortname = ?, program_id = ?, faculty_id = ?, visible = ?, updated_at = ? WHERE course_id = ?";
                     $this->db->query($sql, [
-                        $data['course_name'], $data['course_code'], $data['course_category'],
-                        $data['course_start_date'], $data['course_end_date'], $data['course_status'],
-                        $data['updated_at'], $course_id
+                        $row['subject_id'], $row['course_name'], $row['course_shortname'],
+                        $program_id, $faculty_id, 1, $now, $course_id
                     ]);
                 } else {
-                    $data['created_at'] = date('Y-m-d H:i:s');
-                    $sql = "INSERT INTO sas_courses (course_id, course_name, course_code, course_category, course_start_date, course_end_date, course_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $sql = "INSERT INTO sas_courses (course_id, subject_id, course_name, course_shortname, program_id, faculty_id, visible, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
                     $this->db->query($sql, [
-                        $course_id, $data['course_name'], $data['course_code'], $data['course_category'],
-                        $data['course_start_date'], $data['course_end_date'], $data['course_status'],
-                        $data['created_at'], $data['updated_at']
+                        $course_id, $row['subject_id'], $row['course_name'], $row['course_shortname'],
+                        $program_id, $faculty_id, 1, $now, $now
                     ]);
                 }
             }

@@ -66,8 +66,8 @@ class etl_sas extends REST_Controller {
 				]);
 			}
 
-			// Start background catch-up
-			$this->_run_sas_catchup_background($start_date, $end_date, $concurrency);
+			// Start background catch-up (pass log_id so we can finalize the same row)
+			$this->_run_sas_catchup_background($start_date, $end_date, $concurrency, $log_id);
 
 			$response = [
 				'status' => true,
@@ -250,17 +250,18 @@ class etl_sas extends REST_Controller {
 	}
 
 	// Background helpers
-	private function _run_sas_catchup_background($start_date, $end_date = null, $concurrency = 1)
+	private function _run_sas_catchup_background($start_date, $end_date = null, $concurrency = 1, $log_id = null)
 	{
 		try {
 			$php = 'php';
 			$index = APPPATH . '../index.php';
 			$concurrency = (int)$concurrency ?: 1;
 			$endArg = $end_date ? (' ' . escapeshellarg($end_date)) : '';
+			$logArg = $log_id ? (' ' . intval($log_id)) : '';
 			if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-				$cmd = 'start /B ' . $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . ' > nul 2>&1';
+				$cmd = 'start /B ' . $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . $logArg . ' > nul 2>&1';
 			} else {
-				$cmd = $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . ' > /dev/null 2>&1 &';
+				$cmd = $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . $logArg . ' > /dev/null 2>&1 &';
 			}
 			exec($cmd);
 			log_message('info', 'Spawned SAS catch-up: ' . $cmd);
