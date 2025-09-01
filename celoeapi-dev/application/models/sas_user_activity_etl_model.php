@@ -1214,15 +1214,20 @@ class sas_user_activity_etl_model extends CI_Model {
 		$extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
 		
 		try {
+			etl_log('info', 'SAS ETL start', ['extraction_date' => $extraction_date]);
 			// Start ETL process
 			$this->update_etl_status('running', $extraction_date);
 			
 			// Get complete user activity data
+			etl_log('info', 'SAS ETL fetching user activity');
 			$user_activity_data = $this->get_user_activity_data_paginated(null, $extraction_date);
+			etl_log('info', 'SAS ETL fetched user activity', ['count' => is_array($user_activity_data) ? count($user_activity_data) : 0]);
 			$this->insert_user_activity_etl($user_activity_data, $extraction_date);
+			etl_log('info', 'SAS ETL inserted user activity');
 			
 			// Complete ETL process
 			$this->update_etl_status('completed', $extraction_date);
+			etl_log('info', 'SAS ETL completed', ['extraction_date' => $extraction_date]);
 			
 			return [
 				' status' => 'success',
@@ -1234,6 +1239,7 @@ class sas_user_activity_etl_model extends CI_Model {
 		} catch (Exception $e) {
 			// Mark ETL process as failed
 			$this->update_etl_status('failed', $extraction_date, ['error' => $e->getMessage()]);
+			etl_log('error', 'SAS ETL failed', ['extraction_date' => $extraction_date, 'error' => $e->getMessage()]);
 			
 			throw $e;
 		}

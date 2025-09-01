@@ -183,6 +183,12 @@ class Cp_etl_model extends CI_Model
      */
     public function run_backfill_from_date($startDate, $maxConcurrency = 1, $existingLogId = null, $endDate = null)
     {
+        etl_log('info', 'CP backfill start', [
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'maxConcurrency' => $maxConcurrency,
+            'existingLogId' => $existingLogId
+        ]);
         if (!$startDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)) {
             throw new Exception('Invalid start_date. Use YYYY-MM-DD');
         }
@@ -208,7 +214,9 @@ class Cp_etl_model extends CI_Model
         }
 
         // Ensure student profiles seeded once (idempotent via unique user_id)
+        etl_log('info', 'Seeding student profiles');
         $this->seed_student_profiles();
+        etl_log('info', 'Building quiz detail full refresh');
         $this->etl_student_quiz_detail();
         $dates = [];
         // Build processing dates. If endDate provided, limit to it; otherwise go until today.
@@ -219,6 +227,7 @@ class Cp_etl_model extends CI_Model
         $usedConcurrency = max(1, intval($maxConcurrency));
         $insertedTotal = 0;
 
+        etl_log('info', 'Prepared processing window', ['dates' => $dates, 'usedConcurrency' => $usedConcurrency]);
         if (extension_loaded('pcntl') && $usedConcurrency > 1) {
             $activeChildren = [];
             foreach ($dates as $date) {
@@ -228,23 +237,29 @@ class Cp_etl_model extends CI_Model
                         unset($activeChildren[$pid]);
                     }
                 }
+                etl_log('debug', 'Forking child for date', ['date' => $date]);
                 $pid = pcntl_fork();
                 if ($pid == -1) {
                     // Fork failed, fallback to sequential
+                    etl_log('warning', 'Fork failed, processing sequentially', ['date' => $date]);
                     $insertedTotal += $this->process_single_date($date);
                     // Update watermark after sequential fallback success
                     $this->update_watermark_date($date, strtotime($date . ' 23:59:59'), 'cp_etl');
                 } elseif ($pid) {
                     // Parent
                     $activeChildren[$pid] = true;
+                    etl_log('debug', 'Child forked', ['pid' => $pid, 'date' => $date]);
                 } else {
                     // Child
                     try {
                         // Reconnect DB in child process
                         $this->ensureDbConnection();
+                        etl_log('info', 'Child processing date', ['date' => $date]);
                         $this->process_single_date($date);
+                        etl_log('info', 'Child finished date', ['date' => $date]);
                         exit(0);
                     } catch (Exception $e) {
+                        etl_log('error', 'Child failed date', ['date' => $date, 'error' => $e->getMessage()]);
                         exit(1);
                     }
                 }
@@ -263,20 +278,29 @@ class Cp_etl_model extends CI_Model
             // Sequential
             foreach ($dates as $date) {
                 $this->ensureDbConnection();
+                etl_log('info', 'Processing date sequential', ['date' => $date]);
                 $insertedTotal += $this->process_single_date($date);
+                etl_log('info', 'Processed date sequential', ['date' => $date, 'insertedTotalSoFar' => $insertedTotal]);
                 // Update watermark after each successful day
                 $this->update_watermark_date($date, strtotime($date . ' 23:59:59'), 'cp_etl');
             }
         }
 
         // Rebuild summaries using cp detail tables for the processed window
+        etl_log('info', 'Rebuilding course summary');
         $this->rebuild_course_summary();
+        etl_log('info', 'Rebuilding activity summary from details');
         $this->rebuild_activity_summary_from_cp_details();
 
         log_message('info', 'CP ETL Backfill - Completed: ' . $existingLogId . ' with ' . $insertedTotal . ' inserted' . $startDate);
 
         // Update log at the end
         $this->complete_log($existingLogId, $insertedTotal, $startDate, $computedEnd);
+        etl_log('info', 'CP backfill completed', [
+            'logId' => $existingLogId,
+            'insertedTotal' => $insertedTotal,
+            'processedDays' => count($dates)
+        ]);
 
         return [
             'success' => true,
@@ -292,25 +316,34 @@ class Cp_etl_model extends CI_Model
     {
         $sql = "
             INSERT INTO cp_student_profile (user_id, idnumber, full_name, email, program_studi)
-            SELECT u.id AS user_id,
-                   uid.idnumber AS idnumber,
-                   TRIM(CONCAT(COALESCE(u.firstname,''), ' ', COALESCE(u.lastname,''))) AS full_name,
-                   u.email,
-                   NULL AS program_studi
-            FROM {$this->moodleDbName}.mdl_user u
-            LEFT JOIN (
-                SELECT d.userid, d.data AS idnumber
-                FROM {$this->moodleDbName}.mdl_user_info_data d
-                JOIN {$this->moodleDbName}.mdl_user_info_field f ON f.id = d.fieldid
-                WHERE LOWER(f.shortname) IN ('idnumber','nim','npm')
-            ) uid ON uid.userid = u.id
-            WHERE u.deleted = 0
-            ON DUPLICATE KEY UPDATE
-                idnumber = VALUES(idnumber),
-                full_name = VALUES(full_name),
-                email = VALUES(email),
-                program_studi = VALUES(program_studi),
-                updated_at = CURRENT_TIMESTAMP
+SELECT 
+    u.id AS user_id,
+    u.idnumber AS idnumber,
+    TRIM(CONCAT(COALESCE(u.firstname,''), ' ', COALESCE(u.lastname,''))) AS full_name,
+    u.email,
+    (
+        SELECT c.fullname
+        FROM {$this->moodleDbName}.mdl_user_enrolments ue
+        JOIN {$this->moodleDbName}.mdl_enrol e ON ue.enrolid = e.id
+        JOIN {$this->moodleDbName}.mdl_course c ON e.courseid = c.id
+        WHERE ue.userid = u.id
+        LIMIT 1
+    ) AS program_studi
+FROM {$this->moodleDbName}.mdl_user u
+LEFT JOIN (
+    SELECT d.userid, d.data AS idnumber
+    FROM {$this->moodleDbName}.mdl_user_info_data d
+    JOIN {$this->moodleDbName}.mdl_user_info_field f ON f.id = d.fieldid
+    WHERE LOWER(f.shortname) IN ('idnumber','nim','npm')
+) uid ON uid.userid = u.id
+WHERE u.deleted = 0
+ON DUPLICATE KEY UPDATE
+    idnumber = VALUES(idnumber),
+    full_name = VALUES(full_name),
+    email = VALUES(email),
+    program_studi = VALUES(program_studi),
+    updated_at = CURRENT_TIMESTAMP;
+
         ";
         $this->db->query($sql);
     }
@@ -337,7 +370,7 @@ class Cp_etl_model extends CI_Model
             SELECT
                 l.contextinstanceid AS quiz_id,
                 l.userid AS user_id,
-                uid.idnumber AS nim,
+                u.idnumber AS nim,
                 TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
                 FROM_UNIXTIME(qa.timestart) AS waktu_mulai,
                 FROM_UNIXTIME(qa.timefinish) AS waktu_selesai,
@@ -415,7 +448,7 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_student_assignment_detail (assignment_id, user_id, nim, full_name, waktu_submit, waktu_pengerjaan, nilai)
             SELECT s.assignment AS assignment_id,
                    s.userid AS user_id,
-                   uid.idnumber AS nim,
+                   u.idnumber AS nim,
                    TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
                    FROM_UNIXTIME(s.timemodified) AS waktu_submit,
                    NULL AS waktu_pengerjaan,
@@ -454,7 +487,7 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_student_resource_access (resource_id, user_id, nim, full_name, waktu_akses)
             SELECT l.contextinstanceid AS resource_id,
                    l.userid AS user_id,
-                   uid.idnumber AS nim,
+                   u.idnumber AS nim,
                    TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
                    FROM_UNIXTIME(l.timecreated) AS waktu_akses
             FROM {$this->moodleDbName}.mdl_logstore_standard_log l
@@ -622,7 +655,7 @@ class Cp_etl_model extends CI_Model
         $sql = "
             INSERT INTO cp_student_profile (user_id, idnumber, full_name, email, program_studi)
             SELECT u.id AS user_id,
-                   uid.idnumber AS idnumber,
+                   u.idnumber AS idnumber,
                    TRIM(CONCAT(COALESCE(u.firstname,''), ' ', COALESCE(u.lastname,''))) AS full_name,
                    u.email,
                    NULL AS program_studi
@@ -746,7 +779,7 @@ class Cp_etl_model extends CI_Model
             SELECT
                 l.contextinstanceid AS quiz_id,
                 l.userid AS user_id,
-                uid.idnumber AS nim,
+                u.idnumber AS nim,
                 TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
                 FROM_UNIXTIME(qa.timestart) AS waktu_mulai,
                 FROM_UNIXTIME(qa.timefinish) AS waktu_selesai,
@@ -819,7 +852,7 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_student_assignment_detail (assignment_id, user_id, nim, full_name, waktu_submit, waktu_pengerjaan, nilai)
             SELECT s.assignment AS assignment_id,
                    s.userid AS user_id,
-                   uid.idnumber AS nim,
+                   u.idnumber AS nim,
                    TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
                    FROM_UNIXTIME(s.timemodified) AS waktu_submit,
                    NULL AS waktu_pengerjaan,
@@ -854,7 +887,7 @@ class Cp_etl_model extends CI_Model
             INSERT INTO cp_student_resource_access (resource_id, user_id, nim, full_name, waktu_akses)
             SELECT l.contextinstanceid AS resource_id,
                    l.userid AS user_id,
-                   uid.idnumber AS nim,
+                   u.idnumber AS nim,
                    TRIM(CONCAT(COALESCE(u.firstname,''),' ',COALESCE(u.lastname,''))) AS full_name,
                    FROM_UNIXTIME(l.timecreated) AS waktu_akses
             FROM {$this->moodleDbName}.mdl_logstore_standard_log l

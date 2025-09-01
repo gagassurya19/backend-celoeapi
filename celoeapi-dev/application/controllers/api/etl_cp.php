@@ -32,6 +32,11 @@ class etl_cp extends REST_Controller {
 			}
 
 			// Create per-run log in cp_etl_logs (status inprogress=2)
+			etl_log('debug', 'CP run request', [
+				'start_date' => $start_date,
+				'end_date' => $end_date,
+				'concurrency' => $concurrency
+			]);
 			$log_id = null;
 			$sql = "INSERT INTO cp_etl_logs (offset, numrow, type, message, requested_start_date, status, start_date)
 					VALUES (0,0,'run_cp_backfill', ?, ?, 2, NOW())";
@@ -47,6 +52,7 @@ class etl_cp extends REST_Controller {
 			$log_file = APPPATH . 'logs/cp_etl_' . date('Y-m-d_H-i-s') . '_' . $log_id . '.log';
 			$cmd = $php . ' ' . $index . ' cli run_cp_backfill ' . escapeshellarg($start_date) . ' ' . escapeshellarg($end_date) . ' ' . $concurrency . ' ' . (int)$log_id . ' > ' . $log_file . ' 2>&1 &';
 			log_message('info', 'Spawned CP backfill: ' . $cmd . ' (log: ' . $log_file . ')');
+			etl_log('info', 'CP background process spawned', ['cmd' => $cmd, 'log_file' => $log_file, 'log_id' => $log_id]);
 			exec($cmd);
 
 			$this->response([
@@ -54,10 +60,12 @@ class etl_cp extends REST_Controller {
 				'message' => 'CP ETL started in background',
 				'date_range' => ['start_date' => $start_date, 'end_date' => $end_date],
 				'concurrency' => $concurrency,
-				'log_id' => (int)$log_id
+				'log_id' => (int)$log_id,
+				'log_file' => $log_file
 			], REST_Controller::HTTP_OK);
 		} catch (Exception $e) {
 			log_message('error', 'CP run failed: ' . $e->getMessage());
+			etl_log('error', 'CP run failed', ['error' => $e->getMessage()]);
 			$this->response([
 				'status' => false,
 				'message' => 'CP ETL failed to start',

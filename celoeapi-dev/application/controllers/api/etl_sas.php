@@ -52,6 +52,10 @@ class etl_sas extends REST_Controller {
 
 			log_message('info', 'SAS run payload: ' . json_encode($json_data));
 			log_message('info', 'SAS run range: ' . $start_date . ' to ' . $end_date . ' concurrency=' . $concurrency);
+			etl_log('debug', 'SAS ETL debug enabled, input normalized', [
+				'payload' => $json_data,
+				'normalized' => ['start_date' => $start_date, 'end_date' => $end_date, 'concurrency' => $concurrency]
+			]);
 
 			// Create one ETL log row (will be updated on completion/failure)
 			$log_id = null;
@@ -67,7 +71,16 @@ class etl_sas extends REST_Controller {
 			}
 
 			// Start background catch-up (pass log_id so we can finalize the same row)
-			$this->_run_sas_catchup_background($start_date, $end_date, $concurrency, $log_id);
+			// Prepare per-run log file for detailed output
+			$log_file = APPPATH . 'logs/sas_etl_' . date('Y-m-d_H-i-s') . '_' . ($log_id ?: 'noid') . '.log';
+			etl_log('info', 'Starting SAS background process', [
+				'start_date' => $start_date,
+				'end_date' => $end_date,
+				'concurrency' => $concurrency,
+				'log_id' => $log_id,
+				'log_file' => $log_file
+			]);
+			$this->_run_sas_catchup_background($start_date, $end_date, $concurrency, $log_id, $log_file);
 
 			$response = [
 				'status' => true,
@@ -77,13 +90,15 @@ class etl_sas extends REST_Controller {
 					'end_date' => $end_date
 				],
 				'concurrency' => $concurrency,
-				'note' => 'Check sas_etl_logs for progress'
+				'note' => 'Check sas_etl_logs for progress',
+				'log_file' => $log_file
 			];
 			if ($log_id) { $response['log_id'] = (int)$log_id; }
 			$this->response($response, REST_Controller::HTTP_OK);
 
 		} catch (Exception $e) {
 			log_message('error', 'SAS run failed to start: ' . $e->getMessage());
+			etl_log('error', 'SAS run failed to start', ['error' => $e->getMessage()]);
 			$this->response([
 				'status' => false,
 				'message' => 'SAS ETL failed to start',
@@ -250,7 +265,7 @@ class etl_sas extends REST_Controller {
 	}
 
 	// Background helpers
-	private function _run_sas_catchup_background($start_date, $end_date = null, $concurrency = 1, $log_id = null)
+	private function _run_sas_catchup_background($start_date, $end_date = null, $concurrency = 1, $log_id = null, $log_file = null)
 	{
 		try {
 			$php = 'php';
@@ -258,10 +273,11 @@ class etl_sas extends REST_Controller {
 			$concurrency = (int)$concurrency ?: 1;
 			$endArg = $end_date ? (' ' . escapeshellarg($end_date)) : '';
 			$logArg = $log_id ? (' ' . intval($log_id)) : '';
+			$redirect = $log_file ? (' > ' . $log_file . ' 2>&1') : (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? ' > nul 2>&1' : ' > /dev/null 2>&1');
 			if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-				$cmd = 'start /B ' . $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . $logArg . ' > nul 2>&1';
+				$cmd = 'start /B ' . $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . $logArg . $redirect;
 			} else {
-				$cmd = $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . $logArg . ' > /dev/null 2>&1 &';
+				$cmd = $php . ' ' . $index . ' cli run_student_activity_from_start ' . escapeshellarg($start_date) . $endArg . ' ' . $concurrency . $logArg . $redirect . ' &';
 			}
 			exec($cmd);
 			log_message('info', 'Spawned SAS catch-up: ' . $cmd);

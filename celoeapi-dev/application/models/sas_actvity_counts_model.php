@@ -181,6 +181,7 @@ class sas_actvity_counts_model extends CI_Model {
     public function insert_activity_counts_etl($data, $extraction_date = null)
     {
         $extraction_date = $extraction_date ?: date('Y-m-d', strtotime('-1 day'));
+        etl_log('info', 'Insert activity counts start', ['extraction_date' => $extraction_date, 'rows' => is_array($data) ? count($data) : 0]);
         
         // Check if table exists before proceeding
         if (!$this->db->table_exists('sas_activity_counts_etl')) {
@@ -217,6 +218,7 @@ class sas_actvity_counts_model extends CI_Model {
                 $etl_data['created_at'], $etl_data['updated_at']
             ]);
         }
+        etl_log('info', 'Insert activity counts done', ['extraction_date' => $extraction_date]);
         
         return true;
     }
