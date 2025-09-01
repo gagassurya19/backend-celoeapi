@@ -121,6 +121,8 @@ if (ENVIRONMENT === 'production') {
     // Development: Allow all origins
     $config['cors_allowed_origins'] = [
         'http://localhost:3000',
+        'http://localhost:8081',
+        'http://127.0.0.1:8081',
         'https://clear.celoe.org'
     ];
 }

@@ -25,7 +25,11 @@ $config['swagger'] = [
     'servers' => [
         [
             'url' => 'http://localhost:8081',
-            'description' => 'Local Development Server'
+            'description' => 'Local Development Server (Docker - Port 8081)'
+        ],
+        [
+            'url' => 'http://localhost:8081/api',
+            'description' => 'Local Development Server - API Base Path'
         ],
         [
             'url' => 'https://api.celoe.com',
