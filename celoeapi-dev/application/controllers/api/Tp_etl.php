@@ -103,6 +103,8 @@ class Tp_etl extends CI_Controller {
             
             // Return success response
             $response_data = [
+                'success' => true,
+                'message' => 'ETL completed successfully',
                 'log_id' => $log_id,
                 'summary' => [
                     'extracted' => $etl_result['extracted'],
