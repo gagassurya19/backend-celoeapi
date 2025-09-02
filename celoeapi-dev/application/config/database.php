@@ -82,7 +82,8 @@ $query_builder = TRUE;
 // Database configuration for celoeapi database (ETL processing)
 $db['default'] = array(
     'dsn'	=> '',
-    'hostname' => 'host.docker.internal:3306',
+    'hostname' => 'host.docker.internal',
+    'port' => '3306',
     'username' => 'root',
     'password' => '',
     'database' => 'celoeapi',
@@ -105,7 +106,8 @@ $db['default'] = array(
 // Database configuration for moodle database (existing)
 $db['moodle'] = array(
     'dsn'	=> '',
-    'hostname' => 'host.docker.internal:3306',
+    'hostname' => 'host.docker.internal',
+    'port' => '3306',
     'username' => 'root',
     'password' => '',
     'database' => 'moodle',
