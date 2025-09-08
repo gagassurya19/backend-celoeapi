@@ -23,7 +23,7 @@ class Migration_Create_sp_etl_detail extends CI_Migration {
               `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
               `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
-              UNIQUE KEY `uk_user_course_module_object_timecreated_log_date` (`user_id`, `course_id`, `module_type`, `object_id`, `timecreated`, `log_id`, `extraction_date`),
+              UNIQUE KEY `uk_log_id` (`log_id`),
               KEY `idx_user_id` (`user_id`),
               KEY `idx_course_id` (`course_id`),
               KEY `idx_module_type` (`module_type`),

@@ -52,15 +52,23 @@ class Tp_etl extends CI_Controller {
                 set_time_limit(600); // 10 minutes for ETL process
             }
             
-            // Get concurrency parameter
+            // Get parameters
             $concurrency = $this->input->post('concurrency') ?: 1;
             $concurrency = max(1, min(10, intval($concurrency))); // Limit between 1-10
+            
+            $extraction_date = $this->input->post('extraction_date') ?: date('Y-m-d');
+            
+            // Validate extraction_date format
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $extraction_date)) {
+                $this->_send_response(400, 'Bad Request', 'Invalid extraction_date format. Use YYYY-MM-DD');
+                return;
+            }
             
             // Create log entry
             $log_id = $this->tp_etl_logs_model->create_log_entry(
                 'teacher_summary_etl',
                 'running',
-                'Starting teacher ETL process (Summary + Detail)',
+                "Starting teacher ETL process (Summary + Detail) for date: {$extraction_date}",
                 $concurrency
             );
             
@@ -69,12 +77,12 @@ class Tp_etl extends CI_Controller {
                 return;
             }
             
-            log_message('info', "🚀 ETL Process Started - Log ID: {$log_id}, Concurrency: {$concurrency}");
+            log_message('info', "🚀 ETL Process Started - Log ID: {$log_id}, Concurrency: {$concurrency}, Date: {$extraction_date}");
             
             // Run Complete ETL (Summary + Detail integrated)
-            log_message('info', "🚀 Running Complete Teacher ETL (Summary + Detail)...");
+            log_message('info', "🚀 Running Complete Teacher ETL (Summary + Detail) for date: {$extraction_date}...");
             $start_time = microtime(true);
-            $etl_result = $this->tp_etl_summary_model->run_complete_teacher_etl();
+            $etl_result = $this->tp_etl_summary_model->run_complete_teacher_etl($extraction_date);
             $total_duration = round(microtime(true) - $start_time, 2);
             
             if (!$etl_result['success']) {
@@ -106,6 +114,7 @@ class Tp_etl extends CI_Controller {
                 'success' => true,
                 'message' => 'ETL completed successfully',
                 'log_id' => $log_id,
+                'extraction_date' => $extraction_date,
                 'summary' => [
                     'extracted' => $etl_result['extracted'],
                     'inserted' => $etl_result['inserted'],
@@ -402,9 +411,10 @@ class Tp_etl extends CI_Controller {
                 'POST /api/tp_etl/run' => [
                     'description' => 'Run complete teacher ETL process',
                     'parameters' => [
-                        'concurrency' => 'int (optional, 1-10, default: 1) - Concurrency level'
+                        'concurrency' => 'int (optional, 1-10, default: 1) - Concurrency level',
+                        'extraction_date' => 'string (optional, YYYY-MM-DD, default: today) - Date for extraction'
                     ],
-                    'example' => 'POST /api/tp_etl/run with body: {"concurrency": 2}'
+                    'example' => 'POST /api/tp_etl/run with body: {"concurrency": 2, "extraction_date": "2025-01-08"}'
                 ],
                 'GET /api/tp_etl/logs' => [
                     'description' => 'Get ETL logs with pagination',
@@ -444,6 +454,77 @@ class Tp_etl extends CI_Controller {
         ];
         
         $this->_send_response(200, 'OK', $response_data, false);
+    }
+
+    /**
+     * Validate consistency between summary and detail counts
+     * GET /api/tp_etl/validate_consistency
+     */
+    public function validate_consistency() {
+        try {
+            $start_date = $this->input->get('start_date');
+            $end_date = $this->input->get('end_date');
+            
+            // Validate required parameters
+            if (empty($start_date) || empty($end_date)) {
+                $this->_send_response(400, 'Bad Request', [
+                    'success' => false,
+                    'message' => 'start_date and end_date parameters are required',
+                    'summary_count' => 0,
+                    'detail_count' => 0,
+                    'is_consistent' => false,
+                    'difference' => 0
+                ]);
+                return;
+            }
+            
+            // Validate date format
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start_date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date)) {
+                $this->_send_response(400, 'Bad Request', [
+                    'success' => false,
+                    'message' => 'Invalid date format. Use YYYY-MM-DD',
+                    'summary_count' => 0,
+                    'detail_count' => 0,
+                    'is_consistent' => false,
+                    'difference' => 0
+                ]);
+                return;
+            }
+            
+            // Validate date range
+            if ($start_date > $end_date) {
+                $this->_send_response(400, 'Bad Request', [
+                    'success' => false,
+                    'message' => 'start_date cannot be greater than end_date',
+                    'summary_count' => 0,
+                    'detail_count' => 0,
+                    'is_consistent' => false,
+                    'difference' => 0
+                ]);
+                return;
+            }
+            
+            // Get validation results
+            $validation_result = $this->tp_etl_summary_model->validate_summary_detail_consistency($start_date, $end_date);
+            
+            if ($validation_result['success']) {
+                $this->_send_response(200, 'OK', $validation_result);
+            } else {
+                $this->_send_response(500, 'Internal Server Error', $validation_result);
+            }
+            
+        } catch (Exception $e) {
+            log_message('error', "Error validating summary-detail consistency: " . $e->getMessage());
+            $this->_send_response(500, 'Internal Server Error', [
+                'success' => false,
+                'message' => 'Internal server error',
+                'error' => $e->getMessage(),
+                'summary_count' => 0,
+                'detail_count' => 0,
+                'is_consistent' => false,
+                'difference' => 0
+            ]);
+        }
     }
 
     /**

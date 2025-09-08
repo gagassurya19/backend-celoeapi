@@ -234,7 +234,7 @@ function determine_http_method($method_name) {
 	}
 	
 	// Fallback to method name patterns
-	if (strpos($method_name, 'get') === 0 || strpos($method_name, 'fetch') === 0 || strpos($method_name, 'list') === 0 || strpos($method_name, 'status') === 0 || strpos($method_name, 'health') === 0 || strpos($method_name, 'logs') === 0) {
+	if (strpos($method_name, 'get') === 0 || strpos($method_name, 'fetch') === 0 || strpos($method_name, 'list') === 0 || strpos($method_name, 'status') === 0 || strpos($method_name, 'health') === 0 || strpos($method_name, 'logs') === 0 || strpos($method_name, 'validate') === 0) {
 		return 'get';
 	}
 	if (strpos($method_name, 'post') === 0 || strpos($method_name, 'create') === 0 || strpos($method_name, 'add') === 0 || strpos($method_name, 'run') === 0 || strpos($method_name, 'clear') === 0 || strpos($method_name, 'clean') === 0 || strpos($method_name, 'initialize') === 0) {
@@ -355,6 +355,9 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 		if ($clean_method_name === 'export') {
 			return '/api/tp_etl/export';
 		}
+		if ($clean_method_name === 'validate_consistency') {
+			return '/api/tp_etl/validate_consistency';
+		}
 		if ($clean_method_name === 'help') {
 			return '/api/tp_etl/help';
 		}
@@ -434,6 +437,7 @@ function generate_summary($method_name) {
 		'help' => 'Get API Documentation',
 		'data' => 'Get UDL ETL Data with Pagination',
 		'latest_log' => 'Get Latest ETL Log',
+		'validate_consistency' => 'Validate Summary-Detail Consistency',
 
 	];
 	
@@ -472,6 +476,7 @@ function generate_description($method_name) {
 		'help' => 'Retrieve comprehensive API documentation and examples.',
 		'data' => 'Get UDL ETL data with pagination and filtering. Supports search, date filtering, and role-based filtering.',
 		'latest_log' => 'Get the latest ETL execution log for monitoring and status checking.',
+		'validate_consistency' => 'Validate consistency between summary and detail counts for Teacher ETL data. Compares total activities from summary query with detail table records for a specified date range.',
 
 	];
 	
@@ -506,6 +511,24 @@ function generate_parameters($method_name, $content) {
 			'description' => 'Number of records to skip',
 			'required' => false,
 			'schema' => ['type' => 'integer', 'default' => 0]
+		];
+	}
+	
+	// Add specific parameters for tp_etl validate_consistency method
+	if (strpos($method_name, 'validate_consistency') !== false && strpos($content, 'tp_etl') !== false) {
+		$parameters[] = [
+			'name' => 'start_date',
+			'in' => 'query',
+			'description' => 'Start date for validation (YYYY-MM-DD format)',
+			'required' => true,
+			'schema' => ['type' => 'string', 'format' => 'date', 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$']
+		];
+		$parameters[] = [
+			'name' => 'end_date',
+			'in' => 'query',
+			'description' => 'End date for validation (YYYY-MM-DD format)',
+			'required' => true,
+			'schema' => ['type' => 'string', 'format' => 'date', 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$']
 		];
 	}
 	
@@ -799,6 +822,38 @@ function generate_request_body($method_name, $content) {
 			];
 		}
 		
+		// Special handling for tp_etl/validate_consistency method
+		if (strpos($method_name, 'validate_consistency') !== false && strpos($content, 'tp_etl') !== false) {
+			return [
+				'required' => false,
+				'content' => [
+					'application/x-www-form-urlencoded' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'start_date' => [
+									'type' => 'string',
+									'format' => 'date',
+									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+									'description' => 'Start date for validation (YYYY-MM-DD format)',
+									'example' => '2025-01-01'
+								],
+								'end_date' => [
+									'type' => 'string',
+									'format' => 'date',
+									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+									'description' => 'End date for validation (YYYY-MM-DD format)',
+									'example' => '2025-01-31'
+								]
+							],
+							'required' => ['start_date', 'end_date'],
+							'description' => 'Date range for validating summary-detail consistency'
+						]
+					]
+				]
+			];
+		}
+		
 		// Special handling for udl_etl/run method
 		if (strpos($method_name, 'run') !== false && strpos($content, 'udl_etl') !== false) {
 			return [
@@ -948,6 +1003,68 @@ function generate_responses($method_name, $content = '') {
 			],
 			'401' => ['$ref' => '#/components/schemas/UnauthorizedError'],
 			'500' => ['$ref' => '#/components/schemas/ServerError']
+		];
+	}
+	
+	// Special handling for tp_etl/validate_consistency method responses
+	if (strpos($method_name, 'validate_consistency') !== false && strpos($content, 'tp_etl') !== false) {
+		return [
+			'200' => [
+				'description' => 'Success - Validation completed',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => true],
+								'summary_count' => ['type' => 'integer', 'example' => 1500],
+								'detail_count' => ['type' => 'integer', 'example' => 1500],
+								'is_consistent' => ['type' => 'boolean', 'example' => true],
+								'difference' => ['type' => 'integer', 'example' => 0],
+								'start_date' => ['type' => 'string', 'example' => '2025-01-01'],
+								'end_date' => ['type' => 'string', 'example' => '2025-01-31']
+							]
+						]
+					]
+				]
+			],
+			'400' => [
+				'description' => 'Bad Request - Invalid parameters',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => false],
+								'message' => ['type' => 'string', 'example' => 'start_date and end_date parameters are required'],
+								'summary_count' => ['type' => 'integer', 'example' => 0],
+								'detail_count' => ['type' => 'integer', 'example' => 0],
+								'is_consistent' => ['type' => 'boolean', 'example' => false],
+								'difference' => ['type' => 'integer', 'example' => 0]
+							]
+						]
+					]
+				]
+			],
+			'500' => [
+				'description' => 'Internal Server Error',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => false],
+								'message' => ['type' => 'string', 'example' => 'Internal server error'],
+								'error' => ['type' => 'string', 'example' => 'Database connection failed'],
+								'summary_count' => ['type' => 'integer', 'example' => 0],
+								'detail_count' => ['type' => 'integer', 'example' => 0],
+								'is_consistent' => ['type' => 'boolean', 'example' => false],
+								'difference' => ['type' => 'integer', 'example' => 0]
+							]
+						]
+					]
+				]
+			]
 		];
 	}
 	

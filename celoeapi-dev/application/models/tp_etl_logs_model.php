@@ -202,7 +202,9 @@ class Tp_etl_logs_model extends CI_Model {
         $logs_data = $this->db->get()->result_array();
         
         return [
+            'success' => true,
             'data' => $logs_data,
+            'total' => $total_count,
             'pagination' => [
                 'current_page' => $page,
                 'per_page' => $limit,

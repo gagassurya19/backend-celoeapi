@@ -68,9 +68,9 @@ class Sp_etl_summary_model extends CI_Model {
                         AND ctx.contextlevel = 50  -- Course level only
                         AND r.archetype = 'student'  -- Only students (not admin, teacher, etc.)
                         AND r.shortname IN ('student')  -- Additional check for student role
-                        AND c.visible = 1  -- Only visible courses
                         AND c.id > 1  -- Exclude system course
                         AND lsl.component IN ('mod_assign', 'mod_forum', 'mod_quiz')  -- Same components as detail model
+                        AND lsl.edulevel = 1
                     GROUP BY lsl.userid
                 ) activity_stats ON u.id = activity_stats.user_id
 
@@ -80,7 +80,6 @@ class Sp_etl_summary_model extends CI_Model {
                     AND ctx.contextlevel = 50  -- Course level only
                     AND r.archetype = 'student'  -- Only students (not admin, teacher, etc.)
                     AND r.shortname IN ('student')  -- Additional check for student role
-                    AND c.visible = 1  -- Only visible courses
                     AND c.id > 1  -- Exclude system course
                 GROUP BY u.id, u.username, u.firstname, u.lastname
                 HAVING total_course > 0  -- Only users enrolled in at least one course
@@ -118,17 +117,18 @@ class Sp_etl_summary_model extends CI_Model {
     }
 
     /**
-     * Insert extracted summary data to ETL table (only new records)
+     * Insert or update extracted summary data to ETL table (upsert)
      * @param array $data Array of summary data
-     * @return int Number of affected rows
+     * @return array Result with inserted and updated counts
      */
-    public function insert_summary_data($data) {
+    public function upsert_summary_data($data) {
         if (empty($data)) {
-            return 0;
+            return ['inserted' => 0, 'updated' => 0];
         }
 
         try {
             $inserted_count = 0;
+            $updated_count = 0;
             
             foreach ($data as $record) {
                 // Check if user_id already exists (regardless of extraction_date)
@@ -137,23 +137,40 @@ class Sp_etl_summary_model extends CI_Model {
                                    ->row_array();
                 
                 if (!$existing) {
-                    // Only insert if user_id doesn't exist at all
+                    // Insert new record
                     $this->db->insert($this->table_name, $record);
                     if ($this->db->affected_rows() > 0) {
                         $inserted_count++;
                     }
                 } else {
-                    log_message('info', "User ID {$record['user_id']} already exists, skipping insert");
+                    // Update existing record
+                    $update_data = [
+                        'username' => $record['username'],
+                        'firstname' => $record['firstname'],
+                        'lastname' => $record['lastname'],
+                        'total_course' => $record['total_course'],
+                        'total_login' => $record['total_login'],
+                        'total_activities' => $record['total_activities'],
+                        'extraction_date' => $record['extraction_date'],
+                        'updated_at' => date('Y-m-d H:i:s')
+                    ];
+                    
+                    $this->db->where('user_id', $record['user_id'])
+                             ->update($this->table_name, $update_data);
+                    
+                    if ($this->db->affected_rows() > 0) {
+                        $updated_count++;
+                    }
                 }
             }
             
-            log_message('info', "Inserted {$inserted_count} new summary records to {$this->table_name}");
+            log_message('info', "Upserted summary data: {$inserted_count} inserted, {$updated_count} updated");
             
-            return $inserted_count;
+            return ['inserted' => $inserted_count, 'updated' => $updated_count];
             
         } catch (Exception $e) {
-            log_message('error', "Error inserting summary data: " . $e->getMessage());
-            return 0;
+            log_message('error', "Error upserting summary data: " . $e->getMessage());
+            return ['inserted' => 0, 'updated' => 0];
         }
     }
 
@@ -369,8 +386,8 @@ class Sp_etl_summary_model extends CI_Model {
             // Step 2: Check total existing data (no deletion to preserve IDs)
             $existing_count = $this->db->count_all_results($this->table_name);
 
-            // Step 3: Insert new data
-            $inserted_count = $this->insert_summary_data($extracted_data);
+            // Step 3: Upsert data (insert new or update existing)
+            $upsert_result = $this->upsert_summary_data($extracted_data);
             
             $end_time = microtime(true);
             $duration = round($end_time - $start_time, 2);
@@ -378,11 +395,12 @@ class Sp_etl_summary_model extends CI_Model {
             return [
                 'success' => true,
                 'extracted' => $extracted_count,
-                'inserted' => $inserted_count,
+                'inserted' => $upsert_result['inserted'],
+                'updated' => $upsert_result['updated'],
                 'existing' => $existing_count,
                 'date' => $extraction_date,
                 'duration' => $duration,
-                'message' => "Processed {$extracted_count} student summary records: {$inserted_count} new unique users inserted, {$existing_count} total existing records preserved"
+                'message' => "Processed {$extracted_count} student summary records: {$upsert_result['inserted']} inserted, {$upsert_result['updated']} updated, {$existing_count} total existing records"
             ];
 
         } catch (Exception $e) {

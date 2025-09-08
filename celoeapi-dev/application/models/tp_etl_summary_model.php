@@ -59,27 +59,28 @@ class Tp_etl_summary_model extends CI_Model {
                     GROUP BY lsl.userid
                 ) login_stats ON u.id = login_stats.user_id
                 
-                                 -- General activity statistics
-                 LEFT JOIN (
-                     SELECT 
-                         lsl.userid as user_id,
-                         COUNT(DISTINCT lsl.id) as total_activities
-                     FROM mdl_logstore_standard_log lsl
-                     INNER JOIN mdl_user u ON lsl.userid = u.id
-                     INNER JOIN mdl_role_assignments ra ON u.id = ra.userid
-                     INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
-                     INNER JOIN mdl_course c ON ctx.instanceid = c.id
-                     INNER JOIN mdl_role r ON ra.roleid = r.id
-                     WHERE lsl.timecreated > 0
-                         AND u.deleted = 0 
-                         AND u.suspended = 0
-                         AND u.id > 1
-                         AND ctx.contextlevel = 50
-                         AND r.archetype IN ('teacher', 'editingteacher', 'manager')
-                         AND c.id > 1
-                         AND lsl.target NOT IN ('webservice_function', 'notification')
-                     GROUP BY lsl.userid
-                 ) activity_stats ON u.id = activity_stats.user_id
+                -- General activity statistics (exact same query as detail)
+                LEFT JOIN (
+                    SELECT 
+                        u.id as user_id,
+                        COUNT(DISTINCT lsl.id) as total_activities
+                    FROM mdl_user u
+                    INNER JOIN mdl_role_assignments ra ON u.id = ra.userid
+                    INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
+                    INNER JOIN mdl_course c ON ctx.instanceid = c.id
+                    INNER JOIN mdl_role r ON ra.roleid = r.id
+                    INNER JOIN mdl_logstore_standard_log lsl ON u.id = lsl.userid AND lsl.courseid = c.id
+                    WHERE u.deleted = 0 
+                        AND u.suspended = 0
+                        AND u.id > 1
+                        AND ctx.contextlevel = 50
+                        AND r.archetype IN ('teacher', 'editingteacher', 'manager')
+                        AND c.id > 1
+                        AND lsl.timecreated > 0
+                        AND lsl.target NOT IN ('webservice_function', 'notification')
+                        AND lsl.edulevel = 2
+                    GROUP BY u.id
+                ) activity_stats ON u.id = activity_stats.user_id
                 
                 -- Forum interactions (replies to students)
                 LEFT JOIN (
@@ -147,7 +148,7 @@ class Tp_etl_summary_model extends CI_Model {
                     GROUP BY ra.userid
                 ) quiz_feedback ON u.id = quiz_feedback.user_id
                 
-                                 -- General grading activities
+                -- General grading activities
                  LEFT JOIN (
                      SELECT 
                          lsl.userid as user_id,
@@ -168,10 +169,12 @@ class Tp_etl_summary_model extends CI_Model {
                          AND lsl.action IN ('graded')
                          AND lsl.component IN ('mod_assign', 'mod_quiz')
                          AND lsl.target NOT IN ('webservice_function', 'notification')
+                         AND lsl.edulevel = 2
+                         AND lsl.courseid = c.id
                      GROUP BY lsl.userid
                  ) grading_activities ON u.id = grading_activities.user_id
 
-                                 -- Total logs per module for teacher actions
+                -- Total logs per module for teacher actions
                  LEFT JOIN (
                      SELECT 
                          lsl.userid as user_id,
@@ -193,6 +196,8 @@ class Tp_etl_summary_model extends CI_Model {
                          AND c.id > 1
                          AND lsl.component IN ('mod_assign', 'mod_forum', 'mod_quiz')
                          AND lsl.target NOT IN ('webservice_function', 'notification')
+                         AND lsl.edulevel = 2
+                         AND lsl.courseid = c.id
                      GROUP BY lsl.userid
                  ) module_logs ON u.id = module_logs.user_id
 
@@ -203,7 +208,7 @@ class Tp_etl_summary_model extends CI_Model {
                     AND r.archetype IN ('teacher', 'editingteacher', 'manager')  -- Teachers, editing teachers, and managers
                     AND c.id > 1  -- Exclude system course
                 GROUP BY u.id, u.username, u.firstname, u.lastname, u.email
-                HAVING total_courses_taught > 0  -- Only users teaching at least one course
+                HAVING COUNT(DISTINCT c.id) > 0  -- Only users teaching at least one course
                 ORDER BY u.id
             ";
 
@@ -261,14 +266,13 @@ class Tp_etl_summary_model extends CI_Model {
             $updated_count = 0;
             
             foreach ($data as $record) {
-                // Check if user_id and extraction_date combination already exists
+                // Check if user_id already exists (user_id is unique)
                 $existing = $this->db->where('user_id', $record['user_id'])
-                                   ->where('extraction_date', $record['extraction_date'])
                                    ->get($this->table_name)
                                    ->row_array();
                 
                 if ($existing) {
-                    // Update existing record
+                    // Update existing record with new extraction_date and data
                     $update_data = [
                         'username' => $record['username'],
                         'firstname' => $record['firstname'],
@@ -285,11 +289,11 @@ class Tp_etl_summary_model extends CI_Model {
                         'mod_quiz_logs' => $record['mod_quiz_logs'],
                         'total_login' => $record['total_login'],
                         'total_student_interactions' => $record['total_student_interactions'],
+                        'extraction_date' => $record['extraction_date'], // Update extraction_date
                         'updated_at' => date('Y-m-d H:i:s')
                     ];
             
                     $this->db->where('user_id', $record['user_id'])
-                             ->where('extraction_date', $record['extraction_date'])
                              ->update($this->table_name, $update_data);
                     
                     if ($this->db->affected_rows() > 0) {
@@ -523,4 +527,71 @@ class Tp_etl_summary_model extends CI_Model {
             ];
         }
     }
- }
+
+    /**
+     * Validate consistency between summary and detail counts
+     * @param string $start_date Start date in YYYY-MM-DD format
+     * @param string $end_date End date in YYYY-MM-DD format
+     * @return array Validation results
+     */
+    public function validate_summary_detail_consistency($start_date, $end_date) {
+        try {
+            // Use Moodle database connection
+            $moodle_db = $this->load->database('moodle', TRUE);
+            
+            // Get summary count (exact same query as detail)
+            $summary_count_sql = "
+                SELECT COUNT(DISTINCT lsl.id) as total_activities
+                FROM mdl_user u
+                INNER JOIN mdl_role_assignments ra ON u.id = ra.userid
+                INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
+                INNER JOIN mdl_course c ON ctx.instanceid = c.id
+                INNER JOIN mdl_role r ON ra.roleid = r.id
+                INNER JOIN mdl_logstore_standard_log lsl ON u.id = lsl.userid
+                WHERE u.deleted = 0 
+                    AND u.suspended = 0
+                    AND u.id > 1
+                    AND ctx.contextlevel = 50
+                    AND r.archetype IN ('teacher', 'editingteacher', 'manager')
+                    AND c.id > 1
+                    AND lsl.timecreated > 0
+                    AND lsl.target NOT IN ('webservice_function', 'notification')
+                    AND DATE(FROM_UNIXTIME(lsl.timecreated)) >= ?
+                    AND DATE(FROM_UNIXTIME(lsl.timecreated)) <= ?
+            ";
+            
+            $summary_query = $moodle_db->query($summary_count_sql, [$start_date, $end_date]);
+            $summary_count = $summary_query->row_array()['total_activities'];
+            
+            // Get detail count from tp_etl_detail table
+            $detail_count_sql = "
+                SELECT COUNT(*) as total_activities
+                FROM tp_etl_detail
+                WHERE activity_date >= ? AND activity_date <= ?
+            ";
+            
+            $detail_query = $this->db->query($detail_count_sql, [$start_date, $end_date]);
+            $detail_count = $detail_query->row_array()['total_activities'];
+            
+            return [
+                'success' => true,
+                'summary_count' => $summary_count,
+                'detail_count' => $detail_count,
+                'is_consistent' => $summary_count == $detail_count,
+                'difference' => abs($summary_count - $detail_count),
+                'start_date' => $start_date,
+                'end_date' => $end_date
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'summary_count' => 0,
+                'detail_count' => 0,
+                'is_consistent' => false,
+                'difference' => 0
+            ];
+        }
+    }
+}

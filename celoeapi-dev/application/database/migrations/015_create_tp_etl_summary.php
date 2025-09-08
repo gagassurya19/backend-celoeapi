@@ -28,7 +28,7 @@ class Migration_Create_tp_etl_summary extends CI_Migration {
               `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
               `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
-              UNIQUE KEY `uk_user_date` (`user_id`, `extraction_date`),
+              UNIQUE KEY `uk_user_id` (`user_id`),
               KEY `idx_user_id` (`user_id`),
               KEY `idx_username` (`username`),
               KEY `idx_email` (`email`),
@@ -41,7 +41,8 @@ class Migration_Create_tp_etl_summary extends CI_Migration {
               KEY `idx_quiz_feedback` (`quiz_feedback_count`),
               KEY `idx_grading_count` (`grading_count`),
               KEY `idx_user_date_interactions` (`user_id`, `extraction_date`, `total_student_interactions`),
-              KEY `idx_user_date_courses` (`user_id`, `extraction_date`, `total_courses_taught`)
+              KEY `idx_user_date_courses` (`user_id`, `extraction_date`, `total_courses_taught`),
+              KEY `idx_user_latest` (`user_id`, `extraction_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 

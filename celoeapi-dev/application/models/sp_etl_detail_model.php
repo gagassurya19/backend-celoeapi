@@ -75,7 +75,7 @@ class Sp_etl_detail_model extends CI_Model {
                     SELECT 
                         lsl.userid as user_id,
                         lsl.courseid as course_id,
-                        c.fullname as course_name,
+                        course_info.fullname as course_name,
                         COALESCE(a.name, 'Assignment') as module_name,
                         COALESCE(a.id, lsl.objectid) as object_id,
                         COALESCE(ag.grade, NULL) as grade,
@@ -88,7 +88,8 @@ class Sp_etl_detail_model extends CI_Model {
                     INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
                     INNER JOIN mdl_course c ON ctx.instanceid = c.id
                     INNER JOIN mdl_role r ON ra.roleid = r.id
-                    LEFT JOIN mdl_assign a ON lsl.objectid = a.id AND c.id = a.course
+                    INNER JOIN mdl_course course_info ON lsl.courseid = course_info.id
+                    LEFT JOIN mdl_assign a ON lsl.objectid = a.id AND lsl.courseid = a.course
                     LEFT JOIN mdl_assign_grades ag ON u.id = ag.userid AND a.id = ag.assignment
                     WHERE u.deleted = 0 
                         AND u.suspended = 0
@@ -100,6 +101,7 @@ class Sp_etl_detail_model extends CI_Model {
                         AND c.id > 1  -- Exclude system course
                         AND lsl.component = 'mod_assign'
                         AND lsl.timecreated > 0
+                        AND lsl.edulevel = 1
                     ORDER BY lsl.userid, lsl.courseid, lsl.timecreated
                 ";
                 
@@ -108,7 +110,7 @@ class Sp_etl_detail_model extends CI_Model {
                     SELECT 
                         lsl.userid as user_id,
                         lsl.courseid as course_id,
-                        c.fullname as course_name,
+                        course_info.fullname as course_name,
                         COALESCE(f.name, 'Forum') as module_name,
                         COALESCE(f.id, lsl.objectid) as object_id,
                         NULL as grade,
@@ -121,7 +123,8 @@ class Sp_etl_detail_model extends CI_Model {
                     INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
                     INNER JOIN mdl_course c ON ctx.instanceid = c.id
                     INNER JOIN mdl_role r ON ra.roleid = r.id
-                    LEFT JOIN mdl_forum f ON lsl.objectid = f.id AND c.id = f.course
+                    INNER JOIN mdl_course course_info ON lsl.courseid = course_info.id
+                    LEFT JOIN mdl_forum f ON lsl.objectid = f.id AND lsl.courseid = f.course
                     WHERE u.deleted = 0 
                         AND u.suspended = 0
                         AND u.id > 1  -- Exclude guest user
@@ -132,6 +135,7 @@ class Sp_etl_detail_model extends CI_Model {
                         AND c.id > 1  -- Exclude system course
                         AND lsl.component = 'mod_forum'
                         AND lsl.timecreated > 0
+                        AND lsl.edulevel = 1
                     ORDER BY lsl.userid, lsl.courseid, lsl.timecreated
                 ";
                 
@@ -140,7 +144,7 @@ class Sp_etl_detail_model extends CI_Model {
                     SELECT 
                         lsl.userid as user_id,
                         lsl.courseid as course_id,
-                        c.fullname as course_name,
+                        course_info.fullname as course_name,
                         COALESCE(q.name, 'Quiz') as module_name,
                         COALESCE(q.id, lsl.objectid) as object_id,
                         COALESCE(qa.sumgrades, NULL) as grade,
@@ -153,7 +157,8 @@ class Sp_etl_detail_model extends CI_Model {
                     INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
                     INNER JOIN mdl_course c ON ctx.instanceid = c.id
                     INNER JOIN mdl_role r ON ra.roleid = r.id
-                    LEFT JOIN mdl_quiz q ON lsl.objectid = q.id AND c.id = q.course
+                    INNER JOIN mdl_course course_info ON lsl.courseid = course_info.id
+                    LEFT JOIN mdl_quiz q ON lsl.objectid = q.id AND lsl.courseid = q.course
                     LEFT JOIN mdl_quiz_attempts qa ON u.id = qa.userid AND q.id = qa.quiz
                     WHERE u.deleted = 0 
                         AND u.suspended = 0
@@ -165,6 +170,7 @@ class Sp_etl_detail_model extends CI_Model {
                         AND c.id > 1  -- Exclude system course
                         AND lsl.component = 'mod_quiz'
                         AND lsl.timecreated > 0
+                        AND lsl.edulevel = 1
                     ORDER BY lsl.userid, lsl.courseid, lsl.timecreated
                 ";
                 

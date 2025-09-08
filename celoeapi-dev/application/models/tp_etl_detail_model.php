@@ -50,7 +50,7 @@ class Tp_etl_detail_model extends CI_Model {
                 INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
                 INNER JOIN mdl_course c ON ctx.instanceid = c.id
                 INNER JOIN mdl_role r ON ra.roleid = r.id
-                INNER JOIN mdl_logstore_standard_log lsl ON u.id = lsl.userid
+                INNER JOIN mdl_logstore_standard_log lsl ON u.id = lsl.userid AND lsl.courseid = c.id
                 WHERE u.deleted = 0 
                     AND u.suspended = 0
                     AND u.id > 1
@@ -109,7 +109,7 @@ class Tp_etl_detail_model extends CI_Model {
                     INNER JOIN mdl_context ctx ON ra.contextid = ctx.id
                     INNER JOIN mdl_course c ON ctx.instanceid = c.id
                     INNER JOIN mdl_role r ON ra.roleid = r.id
-                    INNER JOIN mdl_logstore_standard_log lsl ON u.id = lsl.userid
+                    INNER JOIN mdl_logstore_standard_log lsl ON u.id = lsl.userid AND lsl.courseid = c.id AND lsl.courseid = c.id
                     WHERE u.deleted = 0 
                         AND u.suspended = 0
                         AND u.id > 1
@@ -118,6 +118,7 @@ class Tp_etl_detail_model extends CI_Model {
                         AND c.id > 1
                         AND lsl.timecreated > 0
                         AND lsl.target NOT IN ('webservice_function', 'notification')
+                        AND lsl.edulevel = 2
                         {$user_filter}
                     ORDER BY lsl.id ASC
                     LIMIT {$optimized_batch_size} OFFSET {$offset}
