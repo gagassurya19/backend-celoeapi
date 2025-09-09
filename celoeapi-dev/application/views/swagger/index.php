@@ -212,13 +212,27 @@
                 showExtensions: true,
                 showCommonExtensions: true,
                 tryItOutEnabled: true,
+                // Force the first server (localhost:8081) to be selected by default
+                defaultModelsExpandDepth: 1,
+                defaultModelExpandDepth: 1,
                 requestInterceptor: function(request) {
                     // Authentication disabled - no authorization header needed
+                    console.log('Swagger request:', request);
                     return request;
                 },
                 onComplete: function() {
                     // Custom completion handler
                     console.log('Swagger UI loaded successfully');
+                    
+                    // Force select the first server (localhost:8081)
+                    setTimeout(function() {
+                        const serverSelect = document.querySelector('.servers select');
+                        if (serverSelect && serverSelect.options.length > 0) {
+                            serverSelect.selectedIndex = 0;
+                            serverSelect.dispatchEvent(new Event('change'));
+                            console.log('Forced server selection to:', serverSelect.options[0].value);
+                        }
+                    }, 1000);
                     
                     // Add custom styling for better mobile experience
                     const style = document.createElement('style');

@@ -21,7 +21,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 |	['database'] The name of the database you want to connect to
 |	['dbdriver'] The database driver. e.g.: mysqli.
 |			Currently supported:
-|				 cubrid, ibase, mssql, mysql, mysqli, oci8,
+|				 cubrid, ibase, mssql, mysql, oci8,
 |				 odbc, pdo, postgre, sqlite, sqlite3, sqlsrv
 |	['dbprefix'] You can add an optional prefix, which will be added
 |				 to the table name when using the  Query Builder class
@@ -70,113 +70,59 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | The $query_builder variables lets you determine whether or not to load
 | the query builder class.
 */
+
 $active_group = 'default';
 $query_builder = TRUE;
 
-// Detect environment and configuration
-$environment = getenv('CI_ENV') ?: 'development';
-$is_docker = file_exists('/.dockerenv') || (isset($_SERVER['HOSTNAME']) && strpos($_SERVER['HOSTNAME'], 'docker') !== false);
+// ========================================
+// KONFIGURASI DATABASE UNTUK DOCKER + XAMPP
+// ========================================
+// Docker container mengakses XAMPP di local machine
 
-// Load production config if specified
-if ($environment === 'production') {
-    include_once 'database_production.php';
-    return; // Exit early, production config loaded
-}
+// Database configuration for celoeapi database (ETL processing)
+$db['default'] = array(
+    'dsn'	=> '',
+    'hostname' => 'host.docker.internal',
+    'port' => '3306',
+    'username' => 'root',
+    'password' => '',
+    'database' => 'celoeapi',
+    'dbdriver' => 'mysqli',
+    'dbprefix' => '',
+    'pconnect' => FALSE,
+    'db_debug' => TRUE,
+    'cache_on' => FALSE,
+    'cachedir' => '',
+    'char_set' => 'utf8mb4',
+    'dbcollat' => 'utf8mb4_unicode_ci',
+    'swap_pre' => '',
+    'encrypt' => FALSE,
+    'compress' => FALSE,
+    'stricton' => FALSE,
+    'failover' => array(),
+    'save_queries' => TRUE
+);
 
-// Database configuration for default database (celoeapi)
-if ($is_docker) {
-    // Running inside Docker container - use internal hostname
-    $db['default'] = array(
-        'dsn'	=> '',
-        'hostname' => 'db',
-        'username' => 'moodleuser',
-        'password' => 'moodlepass',
-        'database' => 'celoeapi',
-        'dbdriver' => 'mysqli',
-        'dbprefix' => '',
-        'pconnect' => FALSE,
-        'db_debug' => (ENVIRONMENT !== 'production'),
-        'cache_on' => FALSE,
-        'cachedir' => '',
-        'char_set' => 'utf8mb4',
-        'dbcollat' => 'utf8mb4_unicode_ci',
-        'swap_pre' => '',
-        'encrypt' => FALSE,
-        'compress' => FALSE,
-        'stricton' => FALSE,
-        'failover' => array(),
-        'save_queries' => TRUE
-    );
-} else {
-    // Running on host machine - use localhost with port 3302
-    $db['default'] = array(
-        'dsn'	=> '',
-        'hostname' => 'localhost:3302',
-        'username' => 'moodleuser',
-        'password' => 'moodlepass',
-        'database' => 'celoeapi',
-        'dbdriver' => 'mysqli',
-        'dbprefix' => '',
-        'pconnect' => FALSE,
-        'db_debug' => (ENVIRONMENT !== 'production'),
-        'cache_on' => FALSE,
-        'cachedir' => '',
-        'char_set' => 'utf8mb4',
-        'dbcollat' => 'utf8mb4_unicode_ci',
-        'swap_pre' => '',
-        'encrypt' => FALSE,
-        'compress' => FALSE,
-        'stricton' => FALSE,
-        'failover' => array(),
-        'save_queries' => TRUE
-    );
-}
-
-// Database configuration for moodle database
-if ($is_docker) {
-    // Running inside Docker container - use internal hostname
-    $db['moodle'] = array(
-        'dsn'	=> '',
-        'hostname' => 'db',
-        'username' => 'moodleuser',
-        'password' => 'moodlepass',
-        'database' => 'moodle',
-        'dbdriver' => 'mysqli',
-        'dbprefix' => 'mdl_',
-        'pconnect' => FALSE,
-        'db_debug' => (ENVIRONMENT !== 'production'),
-        'cache_on' => FALSE,
-        'cachedir' => '',
-        'char_set' => 'utf8mb4',
-        'dbcollat' => 'utf8mb4_unicode_ci',
-        'swap_pre' => '',
-        'encrypt' => FALSE,
-        'compress' => FALSE,
-        'stricton' => FALSE,
-        'failover' => array(),
-        'save_queries' => TRUE
-    );
-} else {
-    // Running on host machine - use localhost with port 3302
-    $db['moodle'] = array(
-        'dsn'	=> '',
-        'hostname' => 'localhost:3302',
-        'username' => 'moodleuser',
-        'password' => 'moodlepass',
-        'database' => 'moodle',
-        'dbdriver' => 'mysqli',
-        'dbprefix' => 'mdl_',
-        'pconnect' => FALSE,
-        'db_debug' => (ENVIRONMENT !== 'production'),
-        'cache_on' => FALSE,
-        'cachedir' => '',
-        'char_set' => 'utf8mb4',
-        'dbcollat' => 'utf8mb4_unicode_ci',
-        'swap_pre' => '',
-        'encrypt' => FALSE,
-        'compress' => FALSE,
-        'stricton' => FALSE,
-        'failover' => array(),
-        'save_queries' => TRUE
-    );
-}
+// Database configuration for moodle database (existing)
+$db['moodle'] = array(
+    'dsn'	=> '',
+    'hostname' => 'host.docker.internal',
+    'port' => '3306',
+    'username' => 'root',
+    'password' => '',
+    'database' => 'moodle',
+    'dbdriver' => 'mysqli',
+    'dbprefix' => 'mdl_',
+    'pconnect' => FALSE,
+    'db_debug' => TRUE,
+    'cache_on' => FALSE,
+    'cachedir' => '',
+    'char_set' => 'utf8mb4',
+    'dbcollat' => 'utf8mb4_unicode_ci',
+    'swap_pre' => '',
+    'encrypt' => FALSE,
+    'compress' => FALSE,
+    'stricton' => FALSE,
+    'failover' => array(),
+    'save_queries' => TRUE
+);

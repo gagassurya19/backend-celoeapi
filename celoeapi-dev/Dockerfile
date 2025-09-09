@@ -1,8 +1,9 @@
 FROM php:7.4-apache
 
-# Install extensions and MySQL client
+# Install extensions, MySQL client, and dos2unix
 RUN apt-get update && apt-get install -y --no-install-recommends \
     default-mysql-client \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/* \
     && docker-php-ext-install mysqli pdo pdo_mysql
 
@@ -38,16 +39,21 @@ sleep 10\n\
 # Run setup script if exists\n\
 if [ -f "/var/www/html/setup-celoeapi.sh" ]; then\n\
     echo "Running CeloeAPI setup..."\n\
-    chmod +x /var/www/html/setup-celoeapi.sh\n\
-    ./setup-celoeapi.sh\n\
+    cp /var/www/html/setup-celoeapi.sh /tmp/setup-celoeapi.sh\n\
+    dos2unix /tmp/setup-celoeapi.sh\n\
+    chmod +x /tmp/setup-celoeapi.sh\n\
+    cd /var/www/html\n\
+    /tmp/setup-celoeapi.sh\n\
 fi\n\
 \n\
 # Run Swagger setup if exists\n\
 if [ -f "/var/www/html/setup-swagger-auto.sh" ]; then\n\
     echo "Running Swagger setup..."\n\
-    chmod +x /var/www/html/setup-swagger-auto.sh\n\
+    cp /var/www/html/setup-swagger-auto.sh /tmp/setup-swagger-auto.sh\n\
+    dos2unix /tmp/setup-swagger-auto.sh\n\
+    chmod +x /tmp/setup-swagger-auto.sh\n\
     # Run Swagger setup in background\n\
-    nohup /var/www/html/setup-swagger-auto.sh > /var/log/swagger-setup.log 2>&1 &\n\
+    nohup /tmp/setup-swagger-auto.sh > /var/log/swagger-setup.log 2>&1 &\n\
 fi\n\
 \n\
 # Start Apache\n\

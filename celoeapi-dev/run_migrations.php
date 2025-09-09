@@ -44,7 +44,7 @@ try {
     // Run migrations to latest version
     echo "Running migrations to latest version...\n";
     
-    if ($CI->migration->version(7) === FALSE) {
+    if ($CI->migration->version(13) === FALSE) {
         echo "Migration failed: " . $CI->migration->error_string() . "\n";
         exit(1);
     } else {
@@ -60,13 +60,19 @@ try {
         'sas_user_activity_etl',
         'sas_activity_counts_etl', 
         'sas_user_counts_etl',
+        'sas_users_etl',
+        'sas_user_roles_etl',
+        'sas_user_enrolments_etl',
+        'sas_user_login_hourly',
         'cp_activity_summary',
         'cp_course_summary',
         'cp_student_profile',
         'cp_student_quiz_detail',
         'cp_student_assignment_detail',
         'cp_student_resource_access',
-        'cp_etl_logs'
+        'cp_etl_logs',
+        'sp_etl_summary',
+        'sp_etl_detail'
     ];
     
     $missing_tables = [];

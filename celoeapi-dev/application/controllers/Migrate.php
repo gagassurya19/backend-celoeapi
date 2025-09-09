@@ -32,6 +32,12 @@ class Migrate extends CI_Controller {
 		return (php_sapi_name() === 'cli' OR defined('STDIN'));
 	}
 
+	// Default method - show help
+	public function index()
+	{
+		$this->show_usage();
+	}
+	
 	// CLI Commands
 	public function run($target_version = null)
 	{

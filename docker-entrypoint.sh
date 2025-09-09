@@ -29,8 +29,13 @@ if [ -f /var/www/html/init-moodle.sh ]; then
     echo "Starting Moodle auto-initialization..."
     cd /var/www/html
     
+    # Fix line endings and make executable
+    cp /var/www/html/init-moodle.sh /tmp/init-moodle.sh
+    dos2unix /tmp/init-moodle.sh
+    chmod +x /tmp/init-moodle.sh
+    
     # Run setup in background and wait for completion
-    ./init-moodle.sh &
+    /tmp/init-moodle.sh &
     MOODLE_PID=$!
     
     # Wait for setup to complete (max 10 minutes)

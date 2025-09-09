@@ -61,6 +61,15 @@ $route['api/etl_sas/clean']['POST'] = 'api/etl_sas/clean_data';
 $route['api/etl_sas/logs']['GET'] = 'api/etl_sas/logs';
 $route['api/etl_sas/status']['GET'] = 'api/etl_sas/status';
 
+// SP ETL endpoints (explicit routes for Swagger)
+$route['api/sp_etl/run']['POST'] = 'api/sp_etl/run';
+$route['api/sp_etl/logs']['GET'] = 'api/sp_etl/logs';
+$route['api/sp_etl/get_log/(:any)']['GET'] = 'api/sp_etl/get_log/$1';
+$route['api/sp_etl/stats']['GET'] = 'api/sp_etl/stats';
+$route['api/sp_etl/export_incremental']['POST'] = 'api/sp_etl/export_incremental';
+$route['api/sp_etl/export_state/(:any)']['GET'] = 'api/sp_etl/export_state/$1';
+$route['api/sp_etl/reset_export_state']['POST'] = 'api/sp_etl/reset_export_state';
+
 // Course Performance export endpoints (same prefix as etl_cp)
 $route['api/etl_cp/export']['GET'] = 'api/etl_cp_export/export';
 $route['api/etl_cp/run']['POST'] = 'api/etl_cp/run';

@@ -24,6 +24,9 @@ function generate_swagger_spec() {
 		}
 	}
 	
+	// Debug: Log the loaded config
+	log_message('debug', 'Swagger config loaded: ' . json_encode($config));
+	
 	// Set default config if loading fails
 	if (empty($config)) {
 		$config = [
@@ -56,7 +59,7 @@ function generate_swagger_spec() {
 	if (!isset($config['version'])) $config['version'] = '1.0.0';
 	if (!isset($config['contact'])) $config['contact'] = ['name' => 'Celoe Development Team', 'email' => 'dev@celoe.com'];
 	if (!isset($config['license'])) $config['license'] = ['name' => 'MIT', 'url' => 'https://opensource.org/licenses/MIT'];
-	if (!isset($config['servers'])) $config['servers'] = [['url' => 'http://localhost:8081', 'description' => 'Local Development Server']];
+	if (!isset($config['servers'])) $config['servers'] = [['url' => 'http://localhost:8081', 'description' => 'Local Development Server (Docker)']];
 	if (!isset($config['security'])) $config['security'] = [];
 	if (!isset($config['tags'])) $config['tags'] = [];
 	
@@ -192,7 +195,7 @@ function generate_endpoint_from_method($controller_name, $method_name, $content,
 		'description' => generate_description($method_name),
 		'parameters' => generate_parameters($method_name, $content),
 		'requestBody' => generate_request_body($method_name, $content),
-		'responses' => generate_responses($method_name)
+		'responses' => generate_responses($method_name, $content)
 	];
 
 	// Focus tag override for Course Performance endpoints
@@ -204,6 +207,8 @@ function generate_endpoint_from_method($controller_name, $method_name, $content,
 	if (stripos($endpoint_path, '/api/etl_sas') === 0) {
 		$op['tags'] = ['Student Activity Summary ETL'];
 	}
+	
+
 
 	$paths[$endpoint_path] = [ $http_method => $op ];
 	
@@ -229,7 +234,7 @@ function determine_http_method($method_name) {
 	}
 	
 	// Fallback to method name patterns
-	if (strpos($method_name, 'get') === 0 || strpos($method_name, 'fetch') === 0 || strpos($method_name, 'list') === 0 || strpos($method_name, 'export') === 0 || strpos($method_name, 'status') === 0 || strpos($method_name, 'health') === 0 || strpos($method_name, 'logs') === 0) {
+	if (strpos($method_name, 'get') === 0 || strpos($method_name, 'fetch') === 0 || strpos($method_name, 'list') === 0 || strpos($method_name, 'status') === 0 || strpos($method_name, 'health') === 0 || strpos($method_name, 'logs') === 0 || strpos($method_name, 'validate') === 0) {
 		return 'get';
 	}
 	if (strpos($method_name, 'post') === 0 || strpos($method_name, 'create') === 0 || strpos($method_name, 'add') === 0 || strpos($method_name, 'run') === 0 || strpos($method_name, 'clear') === 0 || strpos($method_name, 'clean') === 0 || strpos($method_name, 'initialize') === 0) {
@@ -240,6 +245,16 @@ function determine_http_method($method_name) {
 	}
 	if (strpos($method_name, 'delete') === 0 || strpos($method_name, 'remove') === 0) {
 		return 'delete';
+	}
+	
+	// Special handling for export methods
+	if (strpos($method_name, 'export') === 0) {
+		// Specific methods that should be POST
+		if (in_array($method_name, ['export_incremental', 'export_batch', 'export_data'])) {
+			return 'post';
+		}
+		// Default export methods are GET
+		return 'get';
 	}
 	
 	// Default to GET for most methods
@@ -292,6 +307,8 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 		}
 	}
 	
+
+	
 	// Map CP methods to new public paths
 	if (strtolower($controller_name) === 'etl_cp') {
 		if ($clean_method_name === 'run') {
@@ -305,6 +322,63 @@ function generate_endpoint_path($controller_name, $method_name, $controllers_dir
 		}
 		if ($clean_method_name === 'status') {
 			return '/api/etl_cp/status';
+		}
+	}
+	
+	// Map SP ETL methods to proper paths
+	if (strtolower($controller_name) === 'sp_etl') {
+		if ($clean_method_name === 'run') {
+			return '/api/sp_etl/run';
+		}
+		if ($clean_method_name === 'logs') {
+			return '/api/sp_etl/logs';
+		}
+		if ($clean_method_name === 'get_log') {
+			return '/api/sp_etl/get_log/{id}';
+		}
+		if ($clean_method_name === 'stats') {
+			return '/api/sp_etl/stats';
+		}
+		if ($clean_method_name === 'export_incremental') {
+			return '/api/sp_etl/export_incremental';
+		}
+	}
+	
+	// Map TP ETL methods to proper paths
+	if (strtolower($controller_name) === 'tp_etl') {
+		if ($clean_method_name === 'run') {
+			return '/api/tp_etl/run';
+		}
+		if ($clean_method_name === 'logs') {
+			return '/api/tp_etl/logs';
+		}
+		if ($clean_method_name === 'export') {
+			return '/api/tp_etl/export';
+		}
+		if ($clean_method_name === 'validate_consistency') {
+			return '/api/tp_etl/validate_consistency';
+		}
+		if ($clean_method_name === 'help') {
+			return '/api/tp_etl/help';
+		}
+	}
+	
+	// Map UDL ETL methods to proper paths
+	if (strtolower($controller_name) === 'udl_etl') {
+		if ($clean_method_name === 'run') {
+			return '/api/udl_etl/run';
+		}
+		if ($clean_method_name === 'data') {
+			return '/api/udl_etl/data';
+		}
+		if ($clean_method_name === 'export') {
+			return '/api/udl_etl/export';
+		}
+		if ($clean_method_name === 'latest_log') {
+			return '/api/udl_etl/latest_log';
+		}
+		if ($clean_method_name === 'logs') {
+			return '/api/udl_etl/logs';
 		}
 	}
 	
@@ -327,7 +401,12 @@ function generate_tag_from_controller($controller_name) {
 		'Etl_cp' => 'Course Performance ETL',
 		'Etl_cp_export' => 'Course Performance ETL',
 		// Friendlier tag for SAS controller
-		'etl_sas' => 'Student Activity Summary ETL'
+		'etl_sas' => 'Student Activity Summary ETL',
+		// Teacher ETL controller
+		'tp_etl' => 'Teacher ETL',
+		// UDL ETL controller
+		'udl_etl' => 'User Data Logging ETL',
+
 	];
 	
 	return isset($tag_mappings[$controller_name]) ? $tag_mappings[$controller_name] : $tag;
@@ -354,7 +433,12 @@ function generate_summary($method_name) {
 		'get' => 'Get Record',
 		'create' => 'Create Record',
 		'update' => 'Update Record',
-		'delete' => 'Delete Record'
+		'delete' => 'Delete Record',
+		'help' => 'Get API Documentation',
+		'data' => 'Get UDL ETL Data with Pagination',
+		'latest_log' => 'Get Latest ETL Log',
+		'validate_consistency' => 'Validate Summary-Detail Consistency',
+
 	];
 	
 	if (isset($summary_mappings[$clean_method_name])) {
@@ -388,7 +472,12 @@ function generate_description($method_name) {
 		'get' => 'Retrieve a specific record by identifier.',
 		'create' => 'Create a new record.',
 		'update' => 'Update an existing record.',
-		'delete' => 'Delete a record.'
+		'delete' => 'Delete a record.',
+		'help' => 'Retrieve comprehensive API documentation and examples.',
+		'data' => 'Get UDL ETL data with pagination and filtering. Supports search, date filtering, and role-based filtering.',
+		'latest_log' => 'Get the latest ETL execution log for monitoring and status checking.',
+		'validate_consistency' => 'Validate consistency between summary and detail counts for Teacher ETL data. Compares total activities from summary query with detail table records for a specified date range.',
+
 	];
 	
 	if (isset($description_mappings[$clean_method_name])) {
@@ -425,6 +514,86 @@ function generate_parameters($method_name, $content) {
 		];
 	}
 	
+	// Add specific parameters for tp_etl validate_consistency method
+	if (strpos($method_name, 'validate_consistency') !== false && strpos($content, 'tp_etl') !== false) {
+		$parameters[] = [
+			'name' => 'start_date',
+			'in' => 'query',
+			'description' => 'Start date for validation (YYYY-MM-DD format)',
+			'required' => true,
+			'schema' => ['type' => 'string', 'format' => 'date', 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$']
+		];
+		$parameters[] = [
+			'name' => 'end_date',
+			'in' => 'query',
+			'description' => 'End date for validation (YYYY-MM-DD format)',
+			'required' => true,
+			'schema' => ['type' => 'string', 'format' => 'date', 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$']
+		];
+	}
+	
+	// Add specific parameters for tp_etl export method
+	if (strpos($method_name, 'export') !== false && strpos($method_name, 'export_incremental') === false) {
+		// Check if this is tp_etl controller by analyzing content
+		if (strpos($content, 'tp_etl') !== false || strpos($content, 'table_name') !== false) {
+			$parameters[] = [
+				'name' => 'table_name',
+				'in' => 'query',
+				'description' => 'Table to export data from (summary or detail)',
+				'required' => true,
+				'schema' => [
+					'type' => 'string',
+					'enum' => ['summary', 'detail'],
+					'example' => 'summary'
+				]
+			];
+			$parameters[] = [
+				'name' => 'page',
+				'in' => 'query',
+				'description' => 'Page number',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'default' => 1
+				]
+			];
+			$parameters[] = [
+				'name' => 'per_page',
+				'in' => 'query',
+				'description' => 'Records per page',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'maximum' => 1000,
+					'default' => 100
+				]
+			];
+			$parameters[] = [
+				'name' => 'order_by',
+				'in' => 'query',
+				'description' => 'Order by field',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'default' => 'id'
+				]
+			];
+			$parameters[] = [
+				'name' => 'order_direction',
+				'in' => 'query',
+				'description' => 'Order direction',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'enum' => ['ASC', 'DESC'],
+					'default' => 'DESC'
+				]
+			];
+		}
+	}
+	
 	// Analyze controller content for specific query parameters (not body parameters)
 	$specific_params = analyze_controller_parameters($method_name, $content);
 	if (!empty($specific_params)) {
@@ -440,29 +609,178 @@ function generate_parameters($method_name, $content) {
 function analyze_controller_parameters($method_name, $content) {
 	$parameters = [];
 	
-	// Add table selection parameters for export
-	if (strpos($method_name, 'export') !== false) {
-		$parameters[] = [
-			'name' => 'table',
-			'in' => 'query',
-			'description' => 'Single table to export (e.g., cp_student_profile, cp_course_summary, cp_activity_summary, cp_student_quiz_detail, cp_student_assignment_detail, cp_student_resource_access)',
-			'required' => false,
-			'schema' => ['type' => 'string']
-		];
-		$parameters[] = [
-			'name' => 'tables',
-			'in' => 'query',
-			'description' => 'Comma-separated list of tables to export',
-			'required' => false,
-			'schema' => ['type' => 'string']
-		];
-		$parameters[] = [
-			'name' => 'debug',
-			'in' => 'query',
-			'description' => 'Include debug information (counts, database)',
-			'required' => false,
-			'schema' => ['type' => 'boolean']
-		];
+	// Add table selection parameters for export (but exclude export_incremental which uses request body)
+	if (strpos($method_name, 'export') !== false && strpos($method_name, 'export_incremental') === false) {
+		// Skip if this is tp_etl export (already handled above)
+		if (strpos($content, 'tp_etl') === false) {
+			$parameters[] = [
+				'name' => 'table',
+				'in' => 'query',
+				'description' => 'Single table to export (e.g., cp_student_profile, cp_course_summary, cp_activity_summary, cp_student_quiz_detail, cp_student_assignment_detail, cp_student_resource_access)',
+				'required' => false,
+				'schema' => ['type' => 'string']
+			];
+			$parameters[] = [
+				'name' => 'tables',
+				'in' => 'query',
+				'description' => 'Comma-separated list of tables to export',
+				'required' => false,
+				'schema' => ['type' => 'string']
+			];
+			$parameters[] = [
+				'name' => 'debug',
+				'in' => 'query',
+				'description' => 'Include debug information (counts, database)',
+				'required' => false,
+				'schema' => ['type' => 'boolean']
+			];
+		}
+	}
+	
+	// Add UDL ETL specific parameters
+	if (strpos($content, 'udl_etl') !== false) {
+		// Common parameters for data and export methods
+		if (strpos($method_name, 'data') !== false || strpos($method_name, 'export') !== false) {
+			$parameters[] = [
+				'name' => 'page',
+				'in' => 'query',
+				'description' => 'Page number (default: 1)',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'default' => 1
+				]
+			];
+			$parameters[] = [
+				'name' => 'limit',
+				'in' => 'query',
+				'description' => 'Records per page (default: 10 for data, 100 for export, max: 1000)',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'maximum' => 1000,
+					'default' => strpos($method_name, 'export') !== false ? 100 : 10
+				]
+			];
+			$parameters[] = [
+				'name' => 'search',
+				'in' => 'query',
+				'description' => 'Search in username, firstname, lastname, email',
+				'required' => false,
+				'schema' => ['type' => 'string']
+			];
+			$parameters[] = [
+				'name' => 'extraction_date',
+				'in' => 'query',
+				'description' => 'Filter by extraction date (YYYY-MM-DD)',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'format' => 'date'
+				]
+			];
+			$parameters[] = [
+				'name' => 'activity_hour',
+				'in' => 'query',
+				'description' => 'Filter by activity hour (0-23)',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 0,
+					'maximum' => 23
+				]
+			];
+			$parameters[] = [
+				'name' => 'role_name',
+				'in' => 'query',
+				'description' => 'Filter by role name',
+				'required' => false,
+				'schema' => ['type' => 'string']
+			];
+			$parameters[] = [
+				'name' => 'username',
+				'in' => 'query',
+				'description' => 'Filter by username',
+				'required' => false,
+				'schema' => ['type' => 'string']
+			];
+		}
+		
+		// Parameters for logs method
+		if (strpos($method_name, 'logs') !== false) {
+			$parameters[] = [
+				'name' => 'page',
+				'in' => 'query',
+				'description' => 'Page number (default: 1)',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'default' => 1
+				]
+			];
+			$parameters[] = [
+				'name' => 'limit',
+				'in' => 'query',
+				'description' => 'Records per page (default: 10, max: 100)',
+				'required' => false,
+				'schema' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'maximum' => 100,
+					'default' => 10
+				]
+			];
+			$parameters[] = [
+				'name' => 'extraction_date',
+				'in' => 'query',
+				'description' => 'Filter by extraction date (YYYY-MM-DD)',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'format' => 'date'
+				]
+			];
+			$parameters[] = [
+				'name' => 'status',
+				'in' => 'query',
+				'description' => 'Filter by execution status',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'enum' => ['running', 'completed', 'failed']
+				]
+			];
+			$parameters[] = [
+				'name' => 'concurrency',
+				'in' => 'query',
+				'description' => 'Filter by concurrency level',
+				'required' => false,
+				'schema' => ['type' => 'integer']
+			];
+			$parameters[] = [
+				'name' => 'date_from',
+				'in' => 'query',
+				'description' => 'Filter from date (YYYY-MM-DD)',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'format' => 'date'
+				]
+			];
+			$parameters[] = [
+				'name' => 'date_to',
+				'in' => 'query',
+				'description' => 'Filter to date (YYYY-MM-DD)',
+				'required' => false,
+				'schema' => [
+					'type' => 'string',
+					'format' => 'date'
+				]
+			];
+		}
 	}
 	
 	return $parameters;
@@ -479,6 +797,95 @@ function generate_request_body($method_name, $content) {
 	$is_update_method = strpos($method_name, 'update') === 0;
 	
 	if ($is_post_method || $is_put_method || $is_create_method || $is_update_method) {
+		// Special handling for tp_etl/run method
+		if (strpos($method_name, 'run') !== false) {
+			return [
+				'required' => false,
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'concurrency' => [
+									'type' => 'integer',
+									'minimum' => 1,
+									'maximum' => 10,
+									'default' => 1,
+									'description' => 'Concurrency level for ETL process (1-10)',
+									'example' => 2
+								]
+							],
+							'description' => 'Optional parameters for Teacher ETL process'
+						]
+					]
+				]
+			];
+		}
+		
+		// Special handling for tp_etl/validate_consistency method
+		if (strpos($method_name, 'validate_consistency') !== false && strpos($content, 'tp_etl') !== false) {
+			return [
+				'required' => false,
+				'content' => [
+					'application/x-www-form-urlencoded' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'start_date' => [
+									'type' => 'string',
+									'format' => 'date',
+									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+									'description' => 'Start date for validation (YYYY-MM-DD format)',
+									'example' => '2025-01-01'
+								],
+								'end_date' => [
+									'type' => 'string',
+									'format' => 'date',
+									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+									'description' => 'End date for validation (YYYY-MM-DD format)',
+									'example' => '2025-01-31'
+								]
+							],
+							'required' => ['start_date', 'end_date'],
+							'description' => 'Date range for validating summary-detail consistency'
+						]
+					]
+				]
+			];
+		}
+		
+		// Special handling for udl_etl/run method
+		if (strpos($method_name, 'run') !== false && strpos($content, 'udl_etl') !== false) {
+			return [
+				'required' => false,
+				'content' => [
+					'application/x-www-form-urlencoded' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'extraction_date' => [
+									'type' => 'string',
+									'format' => 'date',
+									'pattern' => '^\\d{4}-\\d{2}-\\d{2}$',
+									'description' => 'Extraction date (YYYY-MM-DD format). Default: today',
+									'example' => '2025-01-01'
+								],
+								'concurrency' => [
+									'type' => 'integer',
+									'minimum' => 1,
+									'maximum' => 10,
+									'default' => 1,
+									'description' => 'Number of concurrent processes (1-10)',
+									'example' => 5
+								]
+							],
+							'description' => 'Optional parameters for UDL ETL process'
+						]
+					]
+				]
+			];
+		}
+		
 		// If controller contains start_date reference, allow optional body with start_date + concurrency
 		if (strpos($content, 'start_date') !== false) {
 			return [
@@ -520,15 +927,323 @@ function generate_request_body($method_name, $content) {
 		return null;
 	}
 	
+	// Special handling for export_incremental method (even if not detected as POST by pattern)
+	if (strpos($method_name, 'export_incremental') !== false) {
+		return [
+			'required' => true,
+			'content' => [
+				'application/json' => [
+					'schema' => [
+						'type' => 'object',
+						'properties' => [
+							'table_name' => [
+								'type' => 'string',
+								'enum' => ['sp_etl_summary', 'sp_etl_detail'],
+								'description' => 'Name of the table to export incrementally',
+								'example' => 'sp_etl_summary'
+							],
+							'batch_size' => [
+								'type' => 'integer',
+								'minimum' => 1,
+								'maximum' => 1000,
+								'default' => 100,
+								'description' => 'Number of records to process per batch'
+							],
+							'offset' => [
+								'type' => 'integer',
+								'default' => 0,
+								'description' => 'Offset for pagination'
+							]
+						],
+						'required' => ['table_name']
+					]
+				]
+			]
+		];
+	}
+	
 	return null;
 }
 
 /**
  * Generate responses for endpoint
  */
-function generate_responses($method_name) {
-	// Treat ETL run/backfill endpoints as async
-	if (strpos($method_name, 'backfill') !== false || (strpos($method_name, 'run') !== false && strpos($method_name, 'run_pipeline') === false) || strpos($method_name, 'etl') !== false) {
+function generate_responses($method_name, $content = '') {
+	// Special handling for export_incremental method
+	if (strpos($method_name, 'export_incremental') !== false) {
+		return [
+			'200' => [
+				'description' => 'Success - Incremental export completed',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => true],
+								'message' => ['type' => 'string', 'example' => 'Incremental export completed successfully'],
+								'log_id' => ['type' => 'integer', 'example' => 123],
+								'duration' => ['type' => 'number', 'example' => 2.5],
+								'table_name' => ['type' => 'string', 'example' => 'sp_etl_summary'],
+								'batch_size' => ['type' => 'integer', 'example' => 100],
+								'extraction_date' => ['type' => 'string', 'example' => '2024-08-28'],
+								'export_summary' => ['type' => 'object'],
+								'export_detail' => ['type' => 'object']
+							]
+						]
+					]
+				]
+			],
+			'400' => [
+				'description' => 'Bad request - Invalid parameters',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'status' => ['type' => 'integer', 'example' => 400],
+								'message' => ['type' => 'string', 'example' => 'Bad Request'],
+								'timestamp' => ['type' => 'string', 'example' => '2025-08-28 12:20:12'],
+								'data' => ['type' => 'string', 'example' => 'Invalid table_name. Use: sp_etl_summary or sp_etl_detail']
+							]
+						]
+					]
+				]
+			],
+			'401' => ['$ref' => '#/components/schemas/UnauthorizedError'],
+			'500' => ['$ref' => '#/components/schemas/ServerError']
+		];
+	}
+	
+	// Special handling for tp_etl/validate_consistency method responses
+	if (strpos($method_name, 'validate_consistency') !== false && strpos($content, 'tp_etl') !== false) {
+		return [
+			'200' => [
+				'description' => 'Success - Validation completed',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => true],
+								'summary_count' => ['type' => 'integer', 'example' => 1500],
+								'detail_count' => ['type' => 'integer', 'example' => 1500],
+								'is_consistent' => ['type' => 'boolean', 'example' => true],
+								'difference' => ['type' => 'integer', 'example' => 0],
+								'start_date' => ['type' => 'string', 'example' => '2025-01-01'],
+								'end_date' => ['type' => 'string', 'example' => '2025-01-31']
+							]
+						]
+					]
+				]
+			],
+			'400' => [
+				'description' => 'Bad Request - Invalid parameters',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => false],
+								'message' => ['type' => 'string', 'example' => 'start_date and end_date parameters are required'],
+								'summary_count' => ['type' => 'integer', 'example' => 0],
+								'detail_count' => ['type' => 'integer', 'example' => 0],
+								'is_consistent' => ['type' => 'boolean', 'example' => false],
+								'difference' => ['type' => 'integer', 'example' => 0]
+							]
+						]
+					]
+				]
+			],
+			'500' => [
+				'description' => 'Internal Server Error',
+				'content' => [
+					'application/json' => [
+						'schema' => [
+							'type' => 'object',
+							'properties' => [
+								'success' => ['type' => 'boolean', 'example' => false],
+								'message' => ['type' => 'string', 'example' => 'Internal server error'],
+								'error' => ['type' => 'string', 'example' => 'Database connection failed'],
+								'summary_count' => ['type' => 'integer', 'example' => 0],
+								'detail_count' => ['type' => 'integer', 'example' => 0],
+								'is_consistent' => ['type' => 'boolean', 'example' => false],
+								'difference' => ['type' => 'integer', 'example' => 0]
+							]
+						]
+					]
+				]
+			]
+		];
+	}
+	
+	// Special handling for tp_etl/run method
+	if (strpos($method_name, 'run') !== false && strpos($method_name, 'run_pipeline') === false) {
+			return [
+				'200' => [
+					'description' => 'Success - Teacher ETL process completed',
+					'content' => [
+						'application/json' => [
+							'schema' => [
+								'type' => 'object',
+								'properties' => [
+									'log_id' => ['type' => 'integer', 'example' => 123],
+									'summary' => [
+										'type' => 'object',
+										'properties' => [
+											'extracted' => ['type' => 'integer', 'example' => 150],
+											'inserted' => ['type' => 'integer', 'example' => 100],
+											'updated' => ['type' => 'integer', 'example' => 50],
+											'duration_seconds' => ['type' => 'number', 'example' => 45.2]
+										]
+									],
+									'detail' => [
+										'type' => 'object',
+										'properties' => [
+											'extracted' => ['type' => 'integer', 'example' => 1500],
+											'inserted' => ['type' => 'integer', 'example' => 1500],
+											'duration_seconds' => ['type' => 'number', 'example' => 45.2]
+										]
+									],
+									'total_duration_seconds' => ['type' => 'number', 'example' => 45.2],
+									'concurrency' => ['type' => 'integer', 'example' => 2],
+									'date' => ['type' => 'string', 'example' => '2025-08-29']
+								]
+							]
+						]
+					]
+				],
+				'400' => [
+					'description' => 'Bad request - ETL process failed',
+					'content' => [
+						'application/json' => [
+							'schema' => [
+								'type' => 'object',
+								'properties' => [
+									'log_id' => ['type' => 'integer', 'example' => 123],
+									'error' => ['type' => 'string', 'example' => 'ETL process failed'],
+									'duration_seconds' => ['type' => 'number', 'example' => 5.2],
+									'concurrency' => ['type' => 'integer', 'example' => 2]
+								]
+							]
+						]
+					]
+				],
+				'405' => [
+					'description' => 'Method Not Allowed',
+					'content' => [
+						'application/json' => [
+							'schema' => [
+								'type' => 'object',
+								'properties' => [
+									'status' => ['type' => 'integer', 'example' => 405],
+									'message' => ['type' => 'string', 'example' => 'Method Not Allowed'],
+									'timestamp' => ['type' => 'string', 'example' => '2025-08-29 12:00:00'],
+									'data' => ['type' => 'string', 'example' => 'Only POST method is allowed']
+								]
+							]
+						]
+					]
+				],
+				'500' => [
+					'description' => 'Internal Server Error',
+					'content' => [
+						'application/json' => [
+							'schema' => [
+								'type' => 'object',
+								'properties' => [
+									'error' => ['type' => 'string', 'example' => 'Exception occurred'],
+									'log_id' => ['type' => 'integer', 'example' => 123]
+								]
+							]
+						]
+					]
+				]
+			];
+		}
+		
+		// Special handling for udl_etl/run method
+		if (strpos($method_name, 'run') !== false && strpos($method_name, 'run_pipeline') === false && strpos($method_name, 'tp_etl') === false) {
+			// Check if this is udl_etl controller
+			if (strpos($method_name, 'udl_etl') !== false || strpos($content, 'udl_etl') !== false) {
+				return [
+					'200' => [
+						'description' => 'Success - UDL ETL process completed',
+						'content' => [
+							'application/json' => [
+								'schema' => [
+									'type' => 'object',
+									'properties' => [
+										'success' => ['type' => 'boolean', 'example' => true],
+										'message' => ['type' => 'string', 'example' => 'UDL ETL completed successfully'],
+										'data' => [
+											'type' => 'object',
+											'properties' => [
+												'extraction_date' => ['type' => 'string', 'example' => '2025-01-01'],
+												'concurrency' => ['type' => 'integer', 'example' => 5],
+												'total_extracted' => ['type' => 'integer', 'example' => 1500],
+												'inserted_count' => ['type' => 'integer', 'example' => 1200],
+												'updated_count' => ['type' => 'integer', 'example' => 300],
+												'error_count' => ['type' => 'integer', 'example' => 0],
+												'execution_time' => ['type' => 'number', 'example' => 45.23]
+											]
+										],
+										'timestamp' => ['type' => 'string', 'example' => '2025-01-01 10:00:00']
+									]
+								]
+							]
+						]
+					],
+					'400' => [
+						'description' => 'Bad request - Invalid date format',
+						'content' => [
+							'application/json' => [
+								'schema' => [
+									'type' => 'object',
+									'properties' => [
+										'success' => ['type' => 'boolean', 'example' => false],
+										'error' => ['type' => 'string', 'example' => 'Invalid date format. Use YYYY-MM-DD format.'],
+										'timestamp' => ['type' => 'string', 'example' => '2025-01-01 10:00:00']
+									]
+								]
+							]
+						]
+					],
+					'405' => [
+						'description' => 'Method Not Allowed',
+						'content' => [
+							'application/json' => [
+								'schema' => [
+									'type' => 'object',
+									'properties' => [
+										'success' => ['type' => 'boolean', 'example' => false],
+										'error' => ['type' => 'string', 'example' => 'Method not allowed. Use POST method.'],
+										'timestamp' => ['type' => 'string', 'example' => '2025-01-01 10:00:00']
+									]
+								]
+							]
+						]
+					],
+					'500' => [
+						'description' => 'Internal Server Error',
+						'content' => [
+							'application/json' => [
+								'schema' => [
+									'type' => 'object',
+									'properties' => [
+										'success' => ['type' => 'boolean', 'example' => false],
+										'error' => ['type' => 'string', 'example' => 'Internal server error'],
+										'timestamp' => ['type' => 'string', 'example' => '2025-01-01 10:00:00']
+									]
+								]
+							]
+						]
+					]
+				];
+			}
+		}
+	
+	// Treat ETL run/backfill endpoints as async (but exclude tp_etl/run which is synchronous)
+	if (strpos($method_name, 'backfill') !== false || (strpos($method_name, 'run') !== false && strpos($method_name, 'run_pipeline') === false && strpos($method_name, 'tp_etl') === false) || strpos($method_name, 'etl') !== false) {
 		return [
 			'202' => [
 				'description' => 'Accepted - ETL started in background',
